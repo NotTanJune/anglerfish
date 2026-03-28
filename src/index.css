@@ -1,0 +1,26 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0a0a2e;
+  color: #e0e0e0;
+  font-family: 'Press Start 2P', monospace;
+}
+
+:root {
+  --pixel-font: 'Press Start 2P', monospace;
+  --color-surface: #1a6fc4;
+  --color-twilight: #0a2a5e;
+  --color-midnight: #040e24;
+  --color-abyss: #000000;
+  --color-danger: #ff4444;
+  --color-warning: #ffaa00;
+  --color-safe: #44ff88;
+  --color-lure: #E8913A;
+}

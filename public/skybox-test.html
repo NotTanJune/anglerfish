@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head><title>Skybox Debug</title>
+<style>body{margin:0;overflow:hidden}canvas{display:block}</style>
+</head>
+<body>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+
+// Minimal skybox test - identical to Nugget8 approach
+const renderer = new THREE.WebGLRenderer();
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.autoClearColor = false;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.3, 4000);
+camera.position.set(0, 2, 0);
+
+// Simple sky gradient shader (no textures needed)
+const skyVert = `
+attribute vec3 coord;
+varying vec3 vDir;
+void main() {
+  vDir = coord;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const skyFrag = `
+#include <common>
+varying vec3 vDir;
+void main() {
+  vec3 dir = normalize(vDir);
+  float y = dir.y;
+
+  // Simple day sky gradient
+  vec3 skyColor = vec3(0.25, 0.4, 0.6);
+  vec3 horizonColor = vec3(0.75, 0.9, 1.0);
+  float density = pow2(1.0 - max(0.0, y));
+  vec3 sky = mix(skyColor, horizonColor, density);
+
+  // Sun disc
+  vec3 sunDir = normalize(vec3(0.3, 0.8, 0.2));
+  float sunDot = max(0.0, dot(dir, sunDir));
+  float sun = min(pow(sunDot, 2000.0) * 5.0, 1.0);
+  sky = mix(sky, vec3(1.0), sun);
+
+  gl_FragColor = vec4(sky, 1.0);
+}`;
+
+const hs = 2000;
+const verts = new Float32Array([
+  -hs,-hs,-hs, hs,-hs,-hs, -hs,-hs,hs, hs,-hs,hs,
+  -hs,hs,-hs, hs,hs,-hs, -hs,hs,hs, hs,hs,hs
+]);
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+geo.setAttribute('coord', new THREE.BufferAttribute(verts.slice(), 3));
+geo.setIndex([2,3,0,3,1,0, 0,1,4,1,5,4, 1,3,5,3,7,5, 3,2,7,2,6,7, 2,0,6,0,4,6, 4,5,6,5,7,6]);
+
+const skyMat = new THREE.ShaderMaterial({
+  vertexShader: skyVert,
+  fragmentShader: skyFrag,
+  side: THREE.BackSide,
+  depthWrite: false
+});
+
+const skybox = new THREE.Mesh(geo, skyMat);
+skybox.position.copy(camera.position);
+scene.add(skybox);
+
+// Add a simple ocean plane for reference
+const oceanGeo = new THREE.PlaneGeometry(3000, 3000);
+oceanGeo.rotateX(-Math.PI/2);
+const oceanMat = new THREE.MeshBasicMaterial({color: 0x1a6fc4, side: THREE.DoubleSide});
+const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+scene.add(ocean);
+
+// Status overlay
+const div = document.createElement('div');
+div.style.cssText = 'position:fixed;top:10px;left:10px;color:#0f0;font:14px monospace;background:rgba(0,0,0,0.7);padding:8px';
+document.body.appendChild(div);
+
+function animate() {
+  requestAnimationFrame(animate);
+  camera.rotation.y += 0.002;
+  skybox.position.copy(camera.position);
+  renderer.render(scene, camera);
+
+  const gl = renderer.getContext();
+  const err = gl.getError();
+  div.textContent = `WebGL error: ${err === 0 ? 'NONE' : err} | GL version: ${gl.getParameter(gl.VERSION)}`;
+}
+animate();
+</script>
+</body>
+</html>
