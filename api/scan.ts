@@ -1,5 +1,4 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { getFallbackData } from './_lib/fallback'
 
 export const config = {
   maxDuration: 60,
@@ -10,26 +9,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { url } = req.body
-
-  if (!url || typeof url !== 'string') {
-    return res.status(400).json({ error: 'URL is required' })
-  }
-
-  // Check fallback data first
-  const fallback = getFallbackData(url)
-  if (fallback) {
-    return res.status(200).json({ success: true, data: fallback.patterns, source: 'fallback' })
-  }
-
-  // Call TinyFish API
-  const apiKey = process.env.TINYFISH_API_KEY
-  if (!apiKey) {
-    return res.status(500).json({ error: 'TinyFish API key not configured' })
-  }
-
   try {
-    const response = await fetch('https://agent.tinyfish.ai/v1/automation/run-sse', {
+    const { url } = req.body || {}
+
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: 'URL is required' })
+    }
+
+    const apiKey = process.env.TINYFISH_API_KEY
+    if (!apiKey) {
+      return res.status(500).json({ error: 'TINYFISH_API_KEY not configured in environment variables' })
+    }
+
+    // Call TinyFish synchronous automation endpoint
+    const response = await fetch('https://agent.tinyfish.ai/v1/automation/run', {
       method: 'POST',
       headers: {
         'X-API-Key': apiKey,
@@ -64,32 +57,26 @@ Return results as a JSON array of objects with fields: type, text, section`,
       }),
     })
 
-    // Read SSE stream to completion
-    const text = await response.text()
-
-    // Parse SSE events
-    const lines = text.split('\n')
-    let lastData = ''
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        lastData = line.slice(6)
-      }
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('TinyFish API error:', response.status, errorText)
+      return res.status(502).json({
+        error: `TinyFish API returned ${response.status}`,
+        details: errorText.substring(0, 500),
+      })
     }
 
-    if (lastData) {
-      try {
-        const parsed = JSON.parse(lastData)
-        const result = parsed.result || parsed.data || parsed
-        return res.status(200).json({ success: true, data: result, source: 'tinyfish' })
-      } catch {
-        return res.status(200).json({ success: true, data: lastData, source: 'tinyfish-raw' })
-      }
-    }
+    const result = await response.json()
 
-    return res.status(500).json({ error: 'No data received from TinyFish' })
+    // Extract the data from the response
+    const data = result.result || result.data || result
+    return res.status(200).json({ success: true, data, source: 'tinyfish' })
+
   } catch (error) {
-    console.error('TinyFish scan error:', error)
-    return res.status(500).json({ error: 'Scan failed', details: String(error) })
+    console.error('Scan handler error:', error)
+    return res.status(500).json({
+      error: 'Scan failed',
+      details: error instanceof Error ? error.message : String(error),
+    })
   }
 }
