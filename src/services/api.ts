@@ -1,7 +1,7 @@
-// Returns raw TinyFish response data - mapped to DarkPattern[] in App.tsx
+// Calls TinyFish synchronous /run endpoint and returns raw result
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function scanUrl(url: string): Promise<any> {
-  // Try serverless function first (works on Vercel deployment)
+  // Try serverless function first (Vercel deployment)
   try {
     const res = await fetch('/api/scan', {
       method: 'POST',
@@ -9,22 +9,25 @@ export async function scanUrl(url: string): Promise<any> {
       body: JSON.stringify({ url }),
     })
     if (res.ok) {
-      const data = await res.json()
-      return data.data
+      const json = await res.json()
+      console.log('[scan] serverless response:', json)
+      return json.data
     }
   } catch {
-    // Serverless function not available, fall through to direct call
+    // Not available, try direct
   }
 
-  // Direct TinyFish API call (works in local dev without vercel dev)
+  // Direct call via Vite proxy (local dev)
   const apiKey = import.meta.env.VITE_TINYFISH_API_KEY
   if (!apiKey) {
-    throw new Error('No API available. Set VITE_TINYFISH_API_KEY in .env or run with vercel dev.')
+    throw new Error('Set VITE_TINYFISH_API_KEY in .env')
   }
 
-  // Use Vite proxy in dev to avoid CORS, direct URL in production
-  const tinyFishBase = import.meta.env.DEV ? '/tinyfish-proxy' : 'https://agent.tinyfish.ai'
-  const res = await fetch(`${tinyFishBase}/v1/automation/run-sse`, {
+  const base = import.meta.env.DEV ? '/tinyfish-proxy' : 'https://agent.tinyfish.ai'
+
+  console.log('[scan] calling TinyFish /run for:', url)
+
+  const res = await fetch(`${base}/v1/automation/run`, {
     method: 'POST',
     headers: {
       'X-API-Key': apiKey,
@@ -34,38 +37,31 @@ export async function scanUrl(url: string): Promise<any> {
       url,
       goal: `Analyze this webpage for dark patterns and manipulative UI techniques.
 
-Look for: urgency timers, scarcity claims, misdirection, forced actions, fake social proof, sneaking (pre-checked boxes), obstruction (hard cancellation), confirmshaming, disguised ads, nagging popups, trick questions, hidden costs, bait and switch.
-
-Return a JSON object with a "dark_patterns" array. Each item should have: "type" (one of: urgency, scarcity, misdirection, forced_action, social_proof, sneaking, obstruction, confirmshaming, disguised_ads, nagging, trick_questions, hidden_costs, bait_and_switch), "text" (the exact text or element), "section" (where on the page).`,
+Return a JSON object with a "dark_patterns" array. Each item must have:
+- "type": one of urgency, scarcity, misdirection, forced_action, social_proof, sneaking, obstruction, confirmshaming, disguised_ads, nagging, trick_questions, hidden_costs, bait_and_switch
+- "text": the exact text or UI element found
+- "section": where on the page it appears`,
       browser_profile: 'lite',
     }),
   })
 
   if (!res.ok) {
     const errText = await res.text()
-    throw new Error(`TinyFish API error ${res.status}: ${errText.substring(0, 200)}`)
+    console.error('[scan] TinyFish error:', res.status, errText)
+    throw new Error(`TinyFish error ${res.status}: ${errText.substring(0, 300)}`)
   }
 
-  // Handle SSE response: read stream, extract last data event
-  const text = await res.text()
-  const lines = text.split('\n')
-  let lastData = ''
+  const json = await res.json()
+  console.log('[scan] TinyFish response:', JSON.stringify(json).substring(0, 500))
 
-  for (const line of lines) {
-    if (line.startsWith('data: ')) {
-      lastData = line.slice(6)
-    }
+  // The sync endpoint returns { run_id, status, result, ... }
+  // result contains the actual data (could be string or object)
+  let result = json.result ?? json.data ?? json
+
+  // If result is a string, try to parse it as JSON
+  if (typeof result === 'string') {
+    try { result = JSON.parse(result) } catch { /* keep as string */ }
   }
 
-  if (lastData) {
-    try {
-      const parsed = JSON.parse(lastData)
-      // TinyFish wraps result in { result: ... } or returns directly
-      return parsed.result || parsed.data || parsed
-    } catch {
-      return lastData
-    }
-  }
-
-  throw new Error('No data received from TinyFish')
+  return result
 }
