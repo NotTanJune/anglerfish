@@ -76,30 +76,57 @@ OPENAI_API_KEY=your_openai_api_key
 ## Project Structure
 
 ```
-src/
-  App.tsx                    # Main app with scan flow
-  scene/
-    OceanBackground.tsx      # Three.js ocean, sky, creatures, anglerfish
-  components/
-    DescentPage.tsx           # Scroll UI, cards, depth meter, report
-    LoadingScreen.tsx         # Asset preloader
-  config/
-    fallbackData.ts           # Demo data for testing
-    spriteMap.ts              # Pixel art sprite mapping
-    monsters.ts               # Monster config per pattern type
-    taxonomy.ts               # Dark pattern taxonomy
-    depthZones.ts             # Ocean depth zones
-  services/
-    api.ts                    # API client
-api/
-  scan.ts                     # TinyFish scraping endpoint
-  classify.ts                 # OpenAI classification endpoint
-public/
-  assets/
-    sprites/                  # Pixel art monster sprites
-    creatures/                # FBX sea creature models
-    waterNormal1.png          # Ocean normal maps
-    waterNormal2.png
+anglerfish/
+├── api/
+│   ├── _lib/
+│   │   ├── fallback.ts              # Pre-cached demo data
+│   │   └── taxonomy.ts             # Dark pattern taxonomy + OpenAI schema
+│   ├── scan.ts                      # TinyFish scraping endpoint
+│   └── classify.ts                  # OpenAI classification endpoint
+├── public/
+│   └── assets/
+│       ├── sprites/                 # Pixel art monster sprites (14 total)
+│       ├── creatures/               # FBX sea creature models + textures
+│       ├── waterNormal1.png         # Ocean normal maps
+│       ├── waterNormal2.png
+│       └── Meshy_AI_Abyssal_Angler*.glb  # 3D anglerfish boss model
+├── src/
+│   ├── App.tsx                      # Main app with scan flow
+│   ├── main.tsx                     # React entry point
+│   ├── index.css                    # Global styles + CSS variables
+│   ├── scene/
+│   │   └── OceanBackground.tsx      # Three.js ocean, sky, creatures, anglerfish
+│   ├── components/
+│   │   ├── DescentPage.tsx          # Scroll UI, cards, depth meter, report
+│   │   ├── LoadingScreen.tsx        # Asset preloader
+│   │   ├── ScanningOverlay.tsx      # Scan progress animation
+│   │   ├── ThreatReport.tsx         # End screen report card
+│   │   ├── URLInput.tsx             # Landing page URL input
+│   │   └── HUD/
+│   │       ├── DepthMeter.tsx       # Depth gauge sidebar
+│   │       ├── ManipulationScore.tsx
+│   │       └── PatternTicker.tsx
+│   ├── config/
+│   │   ├── depthZones.ts            # Ocean depth zone definitions
+│   │   ├── fallbackData.ts          # Client-side demo data
+│   │   ├── monsters.ts             # Monster config per pattern type
+│   │   ├── spriteMap.ts            # Pattern type to sprite file mapping
+│   │   └── taxonomy.ts            # 13-category dark pattern taxonomy
+│   ├── services/
+│   │   └── api.ts                   # Backend API client
+│   ├── shaders/
+│   │   ├── settings.ts             # GLSL shader chunk registration
+│   │   ├── oceanShaders.ts         # Water surface + volume shaders
+│   │   └── skyboxShader.ts         # Procedural skybox shaders
+│   ├── types/
+│   │   └── index.ts                # TypeScript type definitions
+│   └── utils/
+│       └── random.ts               # Seeded PRNG for procedural generation
+├── index.html                       # Entry HTML with SEO meta tags
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+└── vercel.json                      # Vercel deployment config
 ```
 
 ## Dark Pattern Taxonomy
