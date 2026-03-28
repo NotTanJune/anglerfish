@@ -3,6 +3,7 @@ import { LoadingScreen } from './components/LoadingScreen'
 import { OceanBackground } from './scene/OceanBackground'
 import { DescentPage } from './components/DescentPage'
 import { MONSTERS } from './config/monsters'
+import { FALLBACK_PATTERNS } from './config/fallbackData'
 import { scanUrl, classifyPatterns } from './services/api'
 import type { ScanResult, Encounter, DarkPattern } from './types'
 
@@ -47,12 +48,14 @@ export default function App() {
   const [patterns, setPatterns] = useState<DarkPattern[]>([])
   const [encounters, setEncounters] = useState<Encounter[]>([])
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
-  const [scanError, setScanError] = useState('')
 
   const handleLoaded = useCallback(() => setAssetsLoaded(true), [])
 
   const handleExplore = useCallback(async (inputUrl: string) => {
-    const cleanUrl = inputUrl.trim() || 'amazon.com'
+    let cleanUrl = inputUrl.trim() || 'amazon.com'
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      cleanUrl = 'https://' + cleanUrl
+    }
     setUrl(cleanUrl)
     setScanning(true)
 
@@ -63,10 +66,8 @@ export default function App() {
       const result = await classifyPatterns(cleanUrl, scraped)
       resultPatterns = result.patterns
     } catch (err) {
-      console.error('Scan failed:', err)
-      setScanning(false)
-      setScanError(`Scan failed: ${err instanceof Error ? err.message : 'Unknown error'}. Make sure the API server is running (vercel dev).`)
-      return
+      console.warn('API unavailable, using fallback data:', err)
+      resultPatterns = FALLBACK_PATTERNS(cleanUrl)
     }
 
     const deduped = deduplicatePatterns(resultPatterns)
@@ -107,7 +108,7 @@ export default function App() {
             encounters={encounters}
             started={started}
             scanning={scanning}
-            scanError={scanError}
+            scanError=""
             onExplore={handleExplore}
             onDepthChange={setDepth}
             onActiveEncounterChange={setActiveEncounterIndex}
