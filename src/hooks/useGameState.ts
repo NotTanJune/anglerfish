@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import type { AppState, ScanResult, Encounter, DarkPattern } from '../types'
 import { MONSTERS } from '../config/monsters'
-import { scanUrl, classifyPatterns } from '../services/api'
+import { scanUrl } from '../services/api'
 import { FALLBACK_PATTERNS } from '../config/fallbackData'
 
 function generateEncounters(patterns: DarkPattern[]): Encounter[] {
@@ -74,8 +74,7 @@ export function useGameState() {
 
     try {
       const scraped = await scanUrl(url)
-      const result = await classifyPatterns(url, scraped)
-      patterns = result.patterns
+      patterns = Array.isArray(scraped) ? scraped : FALLBACK_PATTERNS(url)
     } catch (err) {
       console.warn('API unavailable, using fallback data:', err)
       patterns = FALLBACK_PATTERNS(url)

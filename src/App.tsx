@@ -4,8 +4,42 @@ import { OceanBackground } from './scene/OceanBackground'
 import { DescentPage } from './components/DescentPage'
 import { MONSTERS } from './config/monsters'
 import { FALLBACK_PATTERNS } from './config/fallbackData'
-import { scanUrl, classifyPatterns } from './services/api'
-import type { ScanResult, Encounter, DarkPattern } from './types'
+import { scanUrl } from './services/api'
+import type { ScanResult, Encounter, DarkPattern, PatternType } from './types'
+
+const VALID_TYPES: PatternType[] = [
+  'urgency', 'scarcity', 'misdirection', 'forced_action', 'social_proof',
+  'sneaking', 'obstruction', 'confirmshaming', 'disguised_ads', 'nagging',
+  'trick_questions', 'hidden_costs', 'bait_and_switch',
+]
+
+// Map TinyFish raw response to our DarkPattern format
+function mapTinyFishResponse(data: unknown): DarkPattern[] | null {
+  if (!data || typeof data !== 'object') return null
+
+  // Handle { dark_patterns: [...] } format
+  const obj = data as Record<string, unknown>
+  const items = Array.isArray(obj.dark_patterns) ? obj.dark_patterns
+    : Array.isArray(obj.patterns) ? obj.patterns
+    : Array.isArray(data) ? data as unknown[]
+    : null
+
+  if (!items || items.length === 0) return null
+
+  return items.map((item: unknown, i: number) => {
+    const p = item as Record<string, unknown>
+    const rawType = String(p.type || p.pattern_type || 'misdirection').toLowerCase().replace(/\s+/g, '_')
+    const patternType = VALID_TYPES.includes(rawType as PatternType) ? rawType as PatternType : 'misdirection'
+
+    return {
+      pattern_type: patternType,
+      severity: (typeof p.severity === 'number' ? p.severity : Math.min(5, Math.max(1, i + 1))) as 1|2|3|4|5,
+      source_text: String(p.text || p.source_text || ''),
+      page_section: String(p.section || p.page_section || 'Unknown'),
+      confidence: typeof p.confidence === 'number' ? p.confidence : 0.85,
+    }
+  }).filter(p => p.source_text.length > 0)
+}
 
 const METERS_PER_PIXEL = 0.08
 const CARD_SCROLL_HEIGHT = 1400
@@ -62,9 +96,14 @@ export default function App() {
     let resultPatterns: DarkPattern[]
 
     try {
-      const scraped = await scanUrl(cleanUrl)
-      const result = await classifyPatterns(cleanUrl, scraped)
-      resultPatterns = result.patterns
+      const rawData = await scanUrl(cleanUrl)
+      const mapped = mapTinyFishResponse(rawData)
+      if (mapped && mapped.length > 0) {
+        resultPatterns = mapped
+      } else {
+        console.warn('TinyFish returned no patterns, using fallback')
+        resultPatterns = FALLBACK_PATTERNS(cleanUrl)
+      }
     } catch (err) {
       console.warn('API unavailable, using fallback data:', err)
       resultPatterns = FALLBACK_PATTERNS(cleanUrl)

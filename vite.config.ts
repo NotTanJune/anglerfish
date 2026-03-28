@@ -9,4 +9,18 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    proxy: {
+      '/tinyfish-proxy': {
+        target: 'https://agent.tinyfish.ai',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/tinyfish-proxy/, ''),
+      },
+      '/openai-proxy': {
+        target: 'https://api.openai.com',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/openai-proxy/, ''),
+      },
+    },
+  },
 })
