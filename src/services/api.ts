@@ -1,9 +1,19 @@
+export class RateLimitError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'RateLimitError'
+  }
+}
+
 export async function startScan(url: string): Promise<string> {
   const res = await fetch('/api/scan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
   })
+  if (res.status === 429) {
+    throw new RateLimitError('Daily exploration limit reached. Try again tomorrow.')
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     throw new Error((err as { error?: string }).error || `Scan start failed: ${res.status}`)

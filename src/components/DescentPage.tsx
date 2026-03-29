@@ -17,6 +17,7 @@ interface Props {
   streamingUrl?: string | null
   scanStatus?: string
   sceneReady?: boolean
+  rateLimited?: boolean
   onExplore: (url: string) => void
   onDepthChange: (depth: number) => void
   onActiveEncounterChange: (index: number) => void
@@ -40,8 +41,8 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 export function DescentPage({
-  patterns, url, scanResult, encounters, started, scanning, scanError,
-  streamingUrl, scanStatus, sceneReady,
+  patterns, scanResult, encounters, started, scanning, scanError,
+  streamingUrl, scanStatus, sceneReady, rateLimited,
   onExplore, onDepthChange, onActiveEncounterChange, onReset,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -197,7 +198,29 @@ export function DescentPage({
             </div>
           )}
 
-          {!started && !scanning && sceneReady && (
+          {!started && !scanning && sceneReady && rateLimited && (
+            <div style={{ textAlign: 'center' }}>
+              <p style={{
+                fontFamily: 'var(--pixel-font)',
+                fontSize: 'clamp(0.5rem, 1.2vw, 0.7rem)',
+                color: '#E8913A',
+                textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
+                marginBottom: '0.5rem',
+              }}>
+                Exploration limit reached for today.
+              </p>
+              <p style={{
+                fontFamily: 'var(--pixel-font)',
+                fontSize: 'clamp(0.35rem, 0.9vw, 0.5rem)',
+                color: '#556',
+                textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
+              }}>
+                Come back tomorrow for more dives.
+              </p>
+            </div>
+          )}
+
+          {!started && !scanning && sceneReady && !rateLimited && (
             <motion.form
               onSubmit={handleSubmit}
               initial={{ opacity: 0, y: 10 }}
@@ -224,7 +247,7 @@ export function DescentPage({
                   className="descent-url-input"
                   value={inputUrl}
                   onChange={(e) => setInputUrl(e.target.value)}
-                  placeholder="amazon.com, booking.com..."
+                  placeholder="Enter any website url..."
                   autoFocus
                   style={{
                     width: '100%',
@@ -404,6 +427,7 @@ export function DescentPage({
           scanResult={scanResult}
           gradeColor={gradeColor}
           scrollY={scrollY}
+          rateLimited={rateLimited}
           onReset={onReset ? () => {
             containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
             setTimeout(() => onReset(), 1500)
@@ -590,8 +614,8 @@ export function DescentPage({
 
 // ── Boss + Report Split Section ──────────────────────────────
 
-function BossReportSection({ top, height, scanResult, gradeColor, scrollY, onReset }: {
-  top: number; height: number; scanResult: ScanResult; gradeColor: string; scrollY: number; onReset?: () => void
+function BossReportSection({ top, height, scanResult, gradeColor, scrollY, rateLimited, onReset }: {
+  top: number; height: number; scanResult: ScanResult; gradeColor: string; scrollY: number; rateLimited?: boolean; onReset?: () => void
 }) {
   const [copied, setCopied] = useState(false)
 
@@ -740,27 +764,44 @@ function BossReportSection({ top, height, scanResult, gradeColor, scrollY, onRes
           </motion.button>
 
           {onReset && (
-            <motion.button
+            <motion.div
               initial={{ opacity: 0 }}
               animate={showScore ? { opacity: 1 } : { opacity: 0 }}
               transition={{ delay: 1.0 }}
-              onClick={onReset}
-              style={{
-                fontFamily: 'var(--pixel-font)',
-                fontSize: 'clamp(0.45rem, 0.9vw, 0.6rem)',
-                padding: '10px 24px',
-                background: 'transparent',
-                border: '2px solid rgba(136, 170, 187, 0.4)',
-                color: '#88aabb',
-                cursor: 'pointer',
-                marginTop: '0.8rem',
-                borderRadius: 4,
-                pointerEvents: 'auto',
-                transition: 'all 0.2s',
-              }}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', marginTop: '0.8rem' }}
             >
-              TRY ANOTHER SITE?
-            </motion.button>
+              {rateLimited ? (
+                <p style={{
+                  fontFamily: 'var(--pixel-font)',
+                  fontSize: 'clamp(0.35rem, 0.8vw, 0.5rem)',
+                  color: '#E8913A',
+                  textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
+                  textAlign: 'center',
+                  lineHeight: 2,
+                  pointerEvents: 'auto',
+                }}>
+                  Exploration limit reached today. Try again tomorrow.
+                </p>
+              ) : (
+                <button
+                  onClick={onReset}
+                  style={{
+                    fontFamily: 'var(--pixel-font)',
+                    fontSize: 'clamp(0.45rem, 0.9vw, 0.6rem)',
+                    padding: '10px 24px',
+                    background: 'transparent',
+                    border: '2px solid rgba(136, 170, 187, 0.4)',
+                    color: '#88aabb',
+                    cursor: 'pointer',
+                    borderRadius: 4,
+                    pointerEvents: 'auto',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  TRY ANOTHER SITE?
+                </button>
+              )}
+            </motion.div>
           )}
         </motion.div>
       </div>

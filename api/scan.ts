@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { checkRateLimit, isAdmin, getClientIp } from './_lib/rateLimit'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -10,6 +11,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!url || typeof url !== 'string') {
       return res.status(400).json({ error: 'URL is required' })
+    }
+
+    // Rate limit check (skip for admin)
+    if (!isAdmin(req)) {
+      const ip = getClientIp(req)
+      const { allowed, remaining } = checkRateLimit(ip)
+      if (!allowed) {
+        return res.status(429).json({
+          error: 'rate_limited',
+          message: 'Daily exploration limit reached. Try again tomorrow.',
+          remaining: 0,
+        })
+      }
+      // Include remaining in successful responses
+      res.setHeader('X-Rate-Remaining', String(remaining))
     }
 
     const apiKey = process.env.TINYFISH_API_KEY

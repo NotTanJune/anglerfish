@@ -603,16 +603,16 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
 
         // ── Anglerfish GLB: only visible when camera is near the bottom ──
         if (anglerfishModel) {
-          // Show anglerfish only when user has scrolled past all encounters (report section)
+          // Show anglerfish only after user scrolls well past the last encounter card
           const encs = encountersRef.current
           const lastEncDepth = encs.length > 0 ? encs[encs.length - 1].depth : 9999
-          const showAngler = s.depth > lastEncDepth + 20
+          const showAngler = s.depth > lastEncDepth + 80
           anglerfishModel.visible = showAngler
           if (showAngler) {
-            // Position in front of camera, slightly below, with gentle idle sway
-            anglerfishModel.position.x = camera.position.x + Math.sin(elapsed * 0.08) * 3
+            // Position to the right side of camera, slightly below
+            anglerfishModel.position.x = camera.position.x + 12 + Math.sin(elapsed * 0.08) * 3
             anglerfishModel.position.z = camera.position.z - 15
-            anglerfishModel.position.y = camera.position.y - 8 + Math.sin(elapsed * 0.2) * 1.5
+            anglerfishModel.position.y = camera.position.y - 6 + Math.sin(elapsed * 0.2) * 1.5
 
             // Face toward the camera
             anglerfishModel.lookAt(camera.position)

@@ -5,7 +5,7 @@ import { DescentPage } from './components/DescentPage'
 import { AudioManager } from './audio/AudioManager'
 import { MONSTERS } from './config/monsters'
 import { FALLBACK_PATTERNS } from './config/fallbackData'
-import { startScan, pollScan, type PollResult } from './services/api'
+import { startScan, pollScan, RateLimitError, type PollResult } from './services/api'
 import type { ScanResult, Encounter, DarkPattern, PatternType } from './types'
 
 const VALID_TYPES: PatternType[] = [
@@ -95,6 +95,7 @@ export default function App() {
   const [streamingUrl, setStreamingUrl] = useState<string | null>(null)
   const [scanStatus, setScanStatus] = useState<string>('PENDING')
   const [sceneReady, setSceneReady] = useState(false)
+  const [rateLimited, setRateLimited] = useState(false)
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const handleLoaded = useCallback(() => setAssetsLoaded(true), [])
@@ -172,6 +173,11 @@ export default function App() {
       pollRef.current = setTimeout(poll, 2000)
 
     } catch (err) {
+      if (err instanceof RateLimitError) {
+        setRateLimited(true)
+        setScanning(false)
+        return
+      }
       console.warn('API unavailable, using fallback data:', err)
       finalizeScan(FALLBACK_PATTERNS(cleanUrl), cleanUrl)
     }
@@ -226,7 +232,7 @@ export default function App() {
             activeEncounterIndex={activeEncounterIndex}
             onSceneReady={handleSceneReady}
           />
-          <AudioManager depth={depth} isActive={started} />
+          <AudioManager depth={depth} isActive={scanning || started} />
           <DescentPage
             patterns={patterns}
             url={url}
@@ -238,6 +244,7 @@ export default function App() {
             scanError=""
             streamingUrl={streamingUrl}
             scanStatus={scanStatus}
+            rateLimited={rateLimited}
             onExplore={handleExplore}
             onDepthChange={setDepth}
             onActiveEncounterChange={setActiveEncounterIndex}

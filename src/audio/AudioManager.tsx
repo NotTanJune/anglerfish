@@ -46,12 +46,15 @@ export function AudioManager({ depth, isActive }: Props) {
     loadedRef.current = true
   }, [])
 
-  // Init when isActive becomes true
+  // Init audio on first activation (user gesture required for Tone.start)
   useEffect(() => {
-    if (isActive) {
+    if (isActive && !loadedRef.current) {
       initAudio()
     }
+  }, [isActive, initAudio])
 
+  // Cleanup on unmount
+  useEffect(() => {
     return () => {
       playersRef.current.forEach(p => {
         try { p.stop(); p.dispose() } catch { /* ignore */ }
@@ -60,11 +63,11 @@ export function AudioManager({ depth, isActive }: Props) {
       loadedRef.current = false
       playingRef.current = false
     }
-  }, [isActive, initAudio])
+  }, [])
 
-  // Start/stop based on depth
+  // Start/stop based on depth (once loaded)
   useEffect(() => {
-    if (!loadedRef.current) return
+    if (!loadedRef.current || !isActive) return
     const players = playersRef.current
 
     if (depth > 0 && !playingRef.current) {
@@ -78,7 +81,7 @@ export function AudioManager({ depth, isActive }: Props) {
       })
       playingRef.current = false
     }
-  }, [depth])
+  }, [depth, isActive])
 
   return null
 }
