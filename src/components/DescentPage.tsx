@@ -18,6 +18,7 @@ interface Props {
   scanStatus?: string
   sceneReady?: boolean
   rateLimited?: boolean
+  onScoreVisible?: () => void
   onExplore: (url: string) => void
   onDepthChange: (depth: number) => void
   onActiveEncounterChange: (index: number) => void
@@ -43,7 +44,7 @@ const STATUS_LABELS: Record<string, string> = {
 export function DescentPage({
   patterns, scanResult, encounters, started, scanning, scanError,
   streamingUrl, scanStatus, sceneReady, rateLimited,
-  onExplore, onDepthChange, onActiveEncounterChange, onReset,
+  onScoreVisible, onExplore, onDepthChange, onActiveEncounterChange, onReset,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [scrollDepth, setScrollDepth] = useState(0)
@@ -428,6 +429,7 @@ export function DescentPage({
           gradeColor={gradeColor}
           scrollY={scrollY}
           rateLimited={rateLimited}
+          onScoreVisible={onScoreVisible}
           onReset={onReset ? () => {
             containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
             setTimeout(() => onReset(), 1500)
@@ -614,14 +616,21 @@ export function DescentPage({
 
 // ── Boss + Report Split Section ──────────────────────────────
 
-function BossReportSection({ top, height, scanResult, gradeColor, scrollY, rateLimited, onReset }: {
-  top: number; height: number; scanResult: ScanResult; gradeColor: string; scrollY: number; rateLimited?: boolean; onReset?: () => void
+function BossReportSection({ top, height, scanResult, gradeColor, scrollY, rateLimited, onScoreVisible, onReset }: {
+  top: number; height: number; scanResult: ScanResult; gradeColor: string; scrollY: number; rateLimited?: boolean; onScoreVisible?: () => void; onReset?: () => void
 }) {
   const [copied, setCopied] = useState(false)
+  const scoreNotifiedRef = useRef(false)
 
   const sectionScroll = Math.max(0, scrollY - top)
   const progress = Math.min(1, sectionScroll / (height * 0.4))
   const showScore = progress > 0.15
+
+  // Fire onScoreVisible once when score first appears
+  if (showScore && !scoreNotifiedRef.current && onScoreVisible) {
+    scoreNotifiedRef.current = true
+    onScoreVisible()
+  }
 
   const patternCounts = Object.entries(
     scanResult.patterns.reduce<Record<string, number>>((acc, p) => {

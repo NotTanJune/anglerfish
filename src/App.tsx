@@ -96,6 +96,7 @@ export default function App() {
   const [scanStatus, setScanStatus] = useState<string>('PENDING')
   const [sceneReady, setSceneReady] = useState(false)
   const [rateLimited, setRateLimited] = useState(false)
+  const [showAnglerfish, setShowAnglerfish] = useState(false)
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const handleLoaded = useCallback(() => setAssetsLoaded(true), [])
@@ -197,6 +198,7 @@ export default function App() {
     setPatterns([])
     setEncounters([])
     setScanResult(null)
+    setShowAnglerfish(false)
     setStreamingUrl(null)
     setScanStatus('PENDING')
   }, [])
@@ -230,6 +232,7 @@ export default function App() {
             encounters={encounters}
             started={started}
             activeEncounterIndex={activeEncounterIndex}
+            showAnglerfish={showAnglerfish}
             onSceneReady={handleSceneReady}
           />
           <AudioManager depth={depth} isActive={scanning || started} />
@@ -248,6 +251,7 @@ export default function App() {
             onExplore={handleExplore}
             onDepthChange={setDepth}
             onActiveEncounterChange={setActiveEncounterIndex}
+            onScoreVisible={() => setShowAnglerfish(true)}
             onReset={handleReset}
           />
           {import.meta.env.DEV && (

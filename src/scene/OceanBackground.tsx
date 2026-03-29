@@ -11,6 +11,7 @@ interface Props {
   encounters: Encounter[]
   started: boolean
   activeEncounterIndex: number
+  showAnglerfish?: boolean
   onSceneReady?: () => void
 }
 
@@ -70,9 +71,9 @@ void main() {
 }
 `
 
-export function OceanBackground({ depth, encounters, started, activeEncounterIndex, onSceneReady }: Props) {
+export function OceanBackground({ depth, encounters, started, activeEncounterIndex, showAnglerfish, onSceneReady }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const stateRef = useRef({ depth: 0, started: false, activeIdx: -1 })
+  const stateRef = useRef({ depth: 0, started: false, activeIdx: -1, showAnglerfish: false })
   const frameIdRef = useRef(0)
   const encountersRef = useRef(encounters)
   const onSceneReadyRef = useRef(onSceneReady)
@@ -82,6 +83,7 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
   useEffect(() => { stateRef.current.started = started }, [started])
   useEffect(() => { stateRef.current.activeIdx = activeEncounterIndex }, [activeEncounterIndex])
   useEffect(() => { encountersRef.current = encounters }, [encounters])
+  useEffect(() => { stateRef.current.showAnglerfish = !!showAnglerfish }, [showAnglerfish])
 
   useEffect(() => {
     const container = containerRef.current
@@ -602,16 +604,18 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
           c.pointLight.intensity = baseLightIntensity + Math.sin(elapsed * 1.5 + c.phase * 2) * pulseAmount
         })
 
-        // ── Anglerfish GLB: spawns after safety score appears ──
+        // ── Anglerfish GLB: tied to safety score visibility ──
         if (anglerfishModel) {
-          // Score pops up at ~lastEncDepth + 127m. Spawn anglerfish after that.
-          const encs = encountersRef.current
-          const lastEncDepth = encs.length > 0 ? encs[encs.length - 1].depth : 9999
-          const spawnDepth = lastEncDepth + 140
-          const showAngler = s.depth > spawnDepth
+          const showAngler = s.showAnglerfish
 
-          // Smooth fade-in over 30m of scroll
-          const fadeProgress = showAngler ? Math.min(1, (s.depth - spawnDepth) / 30) : 0
+          // Smooth fade-in: track time since showAngler became true
+          if (showAngler && !anglerfishModel.userData.spawnTime) {
+            anglerfishModel.userData.spawnTime = elapsed
+          } else if (!showAngler) {
+            anglerfishModel.userData.spawnTime = 0
+          }
+          const timeSinceSpawn = showAngler ? elapsed - (anglerfishModel.userData.spawnTime || elapsed) : 0
+          const fadeProgress = Math.min(1, timeSinceSpawn / 3) // 3 second fade-in
           anglerfishModel.visible = fadeProgress > 0
           anglerfishModel.scale.setScalar(fadeProgress * (anglerfishModel.userData.baseScale ?? 1))
 
