@@ -343,10 +343,11 @@ export function DescentPage({
               </p>
               <p style={{
                 fontFamily: 'var(--pixel-font)',
-                fontSize: 'clamp(0.45rem, 0.9vw, 0.55rem)',
+                fontSize: 'clamp(0.6rem, 1.2vw, 0.8rem)',
                 color: '#aabbcc',
-                textShadow: '0 0 4px #000, 0 0 4px #000',
-                marginTop: '0.3rem',
+                textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
+                marginTop: '0.5rem',
+                textAlign: 'center',
               }}>
                 Usually takes 30-60 seconds
               </p>

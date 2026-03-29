@@ -16,6 +16,9 @@ html, body, #root {
   font-family: 'Press Start 2P', monospace;
 }
 
+*::-webkit-scrollbar { display: none; }
+* { scrollbar-width: none; }
+
 :root {
   --pixel-font: 'Press Start 2P', monospace;
   --color-surface: #1a6fc4;

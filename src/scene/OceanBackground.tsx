@@ -589,8 +589,8 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
           c.mesh.position.z = -18 + Math.cos(t) * (c.orbit * 0.6)
           c.mesh.position.y = c.baseY + Math.sin(t * 0.5) * 2
 
-          // Face the direction of travel
-          c.mesh.rotation.y = t + Math.PI * 0.5
+          // Face the direction of travel (derivative of sin is cos, so heading = atan2(cos(t), -sin(t)))
+          c.mesh.rotation.y = -t + Math.PI * 0.5
 
           // Jellyfish: rhythmic scale pulsing
           if (c.isJellyfish) {
