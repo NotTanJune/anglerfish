@@ -1,6 +1,53 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { checkRateLimit, isAdmin, getClientIp } from './_lib/rateLimit'
 
+// ── Inline rate limiter (avoids _lib import issues in Vercel bundler) ──
+const DAILY_LIMIT = 3
+const store = new Map<string, { count: number; resetAt: number }>()
+
+function checkRateLimit(ip: string): { allowed: boolean; remaining: number } {
+  const now = Date.now()
+  const dayStart = new Date()
+  dayStart.setHours(0, 0, 0, 0)
+  const dayEnd = dayStart.getTime() + 24 * 60 * 60 * 1000
+
+  let entry = store.get(ip)
+  if (!entry || entry.resetAt <= now) {
+    entry = { count: 0, resetAt: dayEnd }
+    store.set(ip, entry)
+  }
+  entry.count++
+
+  if (Math.random() < 0.01) {
+    for (const [key, val] of store.entries()) {
+      if (val.resetAt <= now) store.delete(key)
+    }
+  }
+
+  return {
+    allowed: entry.count <= DAILY_LIMIT,
+    remaining: Math.max(0, DAILY_LIMIT - entry.count),
+  }
+}
+
+function isAdmin(req: VercelRequest): boolean {
+  const secret = process.env.ADMIN_SECRET
+  if (!secret) return false
+  const cookieHeader = req.headers['cookie']
+  if (typeof cookieHeader === 'string') {
+    const match = cookieHeader.match(/anglerfish_admin=([^;]+)/)
+    if (match && match[1] === secret) return true
+  }
+  return false
+}
+
+function getClientIp(req: VercelRequest): string {
+  const forwarded = req.headers['x-forwarded-for']
+  if (typeof forwarded === 'string') return forwarded.split(',')[0].trim()
+  if (Array.isArray(forwarded)) return forwarded[0].split(',')[0].trim()
+  return req.socket?.remoteAddress ?? 'unknown'
+}
+
+// ── Handler ──
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
@@ -24,7 +71,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           remaining: 0,
         })
       }
-      // Include remaining in successful responses
       res.setHeader('X-Rate-Remaining', String(remaining))
     }
 
