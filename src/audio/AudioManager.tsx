@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import * as Tone from 'tone'
 
 interface Props {
@@ -6,62 +6,78 @@ interface Props {
   isActive: boolean
 }
 
+const AUDIO_TRACKS = [
+  { src: '/audio/deep-sea-ambience.mp3', volume: -12 },
+  { src: '/audio/deep-sea-bass-long.mp3', volume: -18 },
+  { src: '/audio/deep-sea-bass.mp3', volume: -20 },
+  { src: '/audio/deep-sea-sounds-loud.mp3', volume: -22 },
+  { src: '/audio/deep-sea-sounds.mp3', volume: -15 },
+]
+
 export function AudioManager({ depth, isActive }: Props) {
-  const synthRef = useRef<Tone.FMSynth | null>(null)
-  const filterRef = useRef<Tone.AutoFilter | null>(null)
-  const reverbRef = useRef<Tone.Reverb | null>(null)
-  const initializedRef = useRef(false)
+  const playersRef = useRef<Tone.Player[]>([])
+  const loadedRef = useRef(false)
+  const playingRef = useRef(false)
+  const toneStartedRef = useRef(false)
 
-  useEffect(() => {
-    if (!isActive || initializedRef.current) return
+  // Initialize Tone context and load audio files when activated
+  const initAudio = useCallback(async () => {
+    if (loadedRef.current) return
 
-    const init = async () => {
+    if (!toneStartedRef.current) {
       await Tone.start()
-      initializedRef.current = true
-
-      const reverb = new Tone.Reverb({ decay: 8, wet: 0.7 })
-      const filter = new Tone.AutoFilter({
-        frequency: 0.08,
-        baseFrequency: 80,
-        octaves: 2,
-      }).start()
-      const synth = new Tone.FMSynth({
-        oscillator: { type: 'sine' },
-        modulationIndex: 2,
-        envelope: { attack: 3, decay: 0, sustain: 1, release: 3 },
-        volume: -20,
-      })
-
-      synth.chain(filter, reverb, Tone.getDestination())
-      synth.triggerAttack('C1')
-
-      synthRef.current = synth
-      filterRef.current = filter
-      reverbRef.current = reverb
+      toneStartedRef.current = true
     }
 
-    init()
+    const players = AUDIO_TRACKS.map(({ src, volume }) => {
+      return new Tone.Player({
+        url: src,
+        loop: true,
+        volume,
+        fadeIn: 3,
+        fadeOut: 3,
+      }).toDestination()
+    })
+
+    playersRef.current = players
+
+    // Wait for all buffers to load
+    await Tone.loaded()
+    loadedRef.current = true
+  }, [])
+
+  // Init when isActive becomes true
+  useEffect(() => {
+    if (isActive) {
+      initAudio()
+    }
 
     return () => {
-      synthRef.current?.triggerRelease()
-      setTimeout(() => {
-        synthRef.current?.dispose()
-        filterRef.current?.dispose()
-        reverbRef.current?.dispose()
-        initializedRef.current = false
-      }, 3000)
+      playersRef.current.forEach(p => {
+        try { p.stop(); p.dispose() } catch { /* ignore */ }
+      })
+      playersRef.current = []
+      loadedRef.current = false
+      playingRef.current = false
     }
-  }, [isActive])
+  }, [isActive, initAudio])
 
-  // Modulate audio based on depth
+  // Start/stop based on depth
   useEffect(() => {
-    if (!synthRef.current || !filterRef.current) return
+    if (!loadedRef.current) return
+    const players = playersRef.current
 
-    const depthFactor = Math.min(1, depth / 1200)
-
-    // Lower volume and frequency as we go deeper
-    synthRef.current.volume.rampTo(-20 - depthFactor * 10, 1)
-    filterRef.current.baseFrequency = 80 - depthFactor * 60
+    if (depth > 0 && !playingRef.current) {
+      players.forEach(p => {
+        if (p.loaded && p.state !== 'started') p.start()
+      })
+      playingRef.current = true
+    } else if (depth <= 0 && playingRef.current) {
+      players.forEach(p => {
+        if (p.state === 'started') p.stop()
+      })
+      playingRef.current = false
+    }
   }, [depth])
 
   return null

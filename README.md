@@ -154,6 +154,30 @@ Built for the TinyFish + OpenAI Hackathon at NUS Singapore (March 28, 2026).
 - **Track**: "Most Likely to Go Viral (for the Wrong Reasons)" / Black Mirror
 - **Team**: Solo (Tanmay)
 
+## Safety Grading
+
+The safety score (0-100) measures how safe a site is from dark patterns. Higher is better.
+
+The score is calculated as `100 - manipulation`, where manipulation is a weighted average of:
+
+- **Intensity (60%)**: average pattern severity weighted by confidence, normalized against a max severity of 5
+- **Breadth (40%)**: number of distinct dark patterns found, where 10+ patterns = maximum breadth penalty
+
+| Grade | Safety Score | Meaning |
+|-------|-------------|---------|
+| A | 80-100 | Minimal manipulation |
+| B | 60-79 | Some dark patterns present |
+| C | 40-59 | Notable manipulation tactics |
+| D | 20-39 | Heavy use of dark patterns |
+| F | 0-19 | Pervasive manipulation |
+
+A site with no dark patterns scores 100 (grade A). A site with many severe patterns scores near 0 (grade F).
+
+## Credits
+
+- **Anglerfish 3D Model**: ["Anglerfish"](https://skfb.ly/pGLKo) by Petr Janecka, licensed under [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/)
+- **Sea Creatures Pack**: SeaCreaturesPack (FBX models + textures)
+
 ## License
 
 MIT

@@ -11,6 +11,7 @@ interface Props {
   encounters: Encounter[]
   started: boolean
   activeEncounterIndex: number
+  onSceneReady?: () => void
 }
 
 // ── Voronoi caustic shader (based on Shadertoy MdlXz8 / Maxime Heckel) ──
@@ -69,11 +70,13 @@ void main() {
 }
 `
 
-export function OceanBackground({ depth, encounters, started, activeEncounterIndex }: Props) {
+export function OceanBackground({ depth, encounters, started, activeEncounterIndex, onSceneReady }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const stateRef = useRef({ depth: 0, started: false, activeIdx: -1 })
   const frameIdRef = useRef(0)
   const encountersRef = useRef(encounters)
+  const onSceneReadyRef = useRef(onSceneReady)
+  useEffect(() => { onSceneReadyRef.current = onSceneReady }, [onSceneReady])
 
   useEffect(() => { stateRef.current.depth = depth }, [depth])
   useEffect(() => { stateRef.current.started = started }, [started])
@@ -219,29 +222,97 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
     setTimeout(createMonsterLights, 100)
 
     // ── Sea creatures (FBX models from SeaCreaturesPack) ──
-    interface SeaCreature { mesh: THREE.Group; baseY: number; speed: number; phase: number; swimRadius: number }
+    interface SeaCreature { mesh: THREE.Group; baseY: number; speed: number; phase: number; orbit: number; isJellyfish: boolean; depthFactor: number; pointLight: THREE.PointLight; mixer: THREE.AnimationMixer | null; baseScale: number }
     const seaCreatures: SeaCreature[] = []
     const fbxLoader = new FBXLoader()
+    const textureLoader = new THREE.TextureLoader()
 
+    // Texture map: FBX filename -> texture path
+    const TEXTURE_MAP: Record<string, string> = {
+      'ClowFish.fbx': '/assets/creatures/textures/ClownFish.png',
+      'SmallBlueFish.fbx': '/assets/creatures/textures/SmallBlueFish.png',
+      'SmallGreenFish.fbx': '/assets/creatures/textures/SmallGreenFish.png',
+      'SmallOrangeFish.fbx': '/assets/creatures/textures/SmallOrangeFish.png',
+      'SmallPinkFish.fbx': '/assets/creatures/textures/SmallPinkFish.png',
+      'SmallPurpleFish.fbx': '/assets/creatures/textures/SmallPurpleFish.png',
+      'SmallRedFish.fbx': '/assets/creatures/textures/SmallRedFIsh.png',
+      'SmallYellowFish.fbx': '/assets/creatures/textures/SmallYellowFish.png',
+      'SmallWhiteFish.fbx': '/assets/creatures/textures/SmallWhiteFish.png',
+      'SmallBlackFish.fbx': '/assets/creatures/textures/SmallBlackFish.png',
+      'MediumBrownFish.fbx': '/assets/creatures/textures/MediumBrownFish.png',
+      'MediumGrayFish.fbx': '/assets/creatures/textures/MediumGrayFish.png',
+      'MediumGreenFish.fbx': '/assets/creatures/textures/MediumGreenFish.png',
+      'MediumYellowFish.fbx': '/assets/creatures/textures/MediumYellowFish.png',
+      'Dolphin.fbx': '/assets/creatures/textures/Dolphin.png',
+      'SeaTurtle.fbx': '/assets/creatures/textures/SeaTurtle.png',
+      'Jellyfish.fbx': '/assets/creatures/textures/Jellyfish.png',
+      'HammerheadShark.fbx': '/assets/creatures/textures/HammerheadShark.png',
+      'TigerShark.fbx': '/assets/creatures/textures/TigerShark.png',
+      'WhiteShark.fbx': '/assets/creatures/textures/WhiteShark.png',
+      'PurpleOctopus.fbx': '/assets/creatures/textures/PurpleOctopus.png',
+      'OrangeOctopus.fbx': '/assets/creatures/textures/OrangeOctopus.png',
+      'RedOctopus.fbx': '/assets/creatures/textures/RedOctopus.png',
+      'KillerWhale.fbx': '/assets/creatures/textures/KillerWhaleBaseColor.png',
+      'BlueWhale.fbx': '/assets/creatures/textures/BlueWhale.png',
+      'AnglerFish.fbx': '/assets/creatures/textures/AnglerFish.png',
+    }
+
+    // Creatures ordered by depth: small fish at top, dolphins mid-shallow,
+    // octopus/turtles mid, sharks deep-mid, whales deep, jellyfish throughout
     const creatureConfig = [
-      // Shallow (near surface): schools of fish, dolphin, turtle
-      { file: 'ClowFish.fbx', y: -10, x: 25, z: -20, scale: 0.025, speed: 0.4, light: 0x44aaff },
-      { file: 'SmallBlueFish.fbx', y: -20, x: -20, z: -25, scale: 0.025, speed: 0.5, light: 0x4488ff },
-      { file: 'ClowFish.fbx', y: -30, x: 15, z: -18, scale: 0.02, speed: 0.45, light: 0xffaa44 },
-      { file: 'SmallBlueFish.fbx', y: -45, x: -30, z: -22, scale: 0.02, speed: 0.55, light: 0x66ccff },
-      { file: 'Dolphin.fbx', y: -35, x: 35, z: -30, scale: 0.018, speed: 0.3, light: 0x88bbdd },
-      { file: 'SeaTurtle.fbx', y: -55, x: -25, z: -24, scale: 0.018, speed: 0.12, light: 0x66aa88 },
-      // Mid depth: jellyfish, sharks
-      { file: 'Jellyfish.fbx', y: -100, x: 12, z: -18, scale: 0.025, speed: 0.08, light: 0xaa44ff },
-      { file: 'Jellyfish.fbx', y: -140, x: -18, z: -20, scale: 0.02, speed: 0.06, light: 0x44aaff },
-      { file: 'Jellyfish.fbx', y: -190, x: 8, z: -16, scale: 0.018, speed: 0.07, light: 0xff44aa },
-      { file: 'HammerheadShark.fbx', y: -160, x: 30, z: -30, scale: 0.015, speed: 0.2, light: 0x88aacc },
-      { file: 'SmallBlueFish.fbx', y: -130, x: -25, z: -22, scale: 0.02, speed: 0.4, light: 0x4488ff },
-      // Deep: octopus, whale, more jellyfish
-      { file: 'PurpleOctopus.fbx', y: -250, x: -18, z: -20, scale: 0.018, speed: 0.06, light: 0x8844ff },
-      { file: 'KillerWhale.fbx', y: -320, x: 25, z: -35, scale: 0.01, speed: 0.12, light: 0x6688aa },
-      { file: 'Jellyfish.fbx', y: -300, x: -10, z: -18, scale: 0.02, speed: 0.05, light: 0x00ff88 },
-      { file: 'PurpleOctopus.fbx', y: -380, x: 15, z: -22, scale: 0.015, speed: 0.04, light: 0xff4488 },
+      // Shallow (y: 0 to -80): colorful small fish schools
+      { file: 'ClowFish.fbx', y: -8, x: 0, z: -18, scale: 0.025, speed: 0.4, light: 0xffaa44, orbit: 30 },
+      { file: 'SmallOrangeFish.fbx', y: -12, x: 0, z: -15, scale: 0.02, speed: 0.5, light: 0xff8844, orbit: 25 },
+      { file: 'SmallBlueFish.fbx', y: -18, x: 0, z: -22, scale: 0.025, speed: 0.5, light: 0x4488ff, orbit: 28 },
+      { file: 'SmallPinkFish.fbx', y: -22, x: 0, z: -16, scale: 0.02, speed: 0.55, light: 0xff88bb, orbit: 22 },
+      { file: 'SmallGreenFish.fbx', y: -28, x: 0, z: -20, scale: 0.02, speed: 0.45, light: 0x44cc66, orbit: 26 },
+      { file: 'SmallYellowFish.fbx', y: -32, x: 0, z: -14, scale: 0.022, speed: 0.48, light: 0xffcc44, orbit: 24 },
+      { file: 'ClowFish.fbx', y: -38, x: 0, z: -25, scale: 0.02, speed: 0.42, light: 0xffaa44, orbit: 32 },
+      { file: 'SmallRedFish.fbx', y: -42, x: 0, z: -18, scale: 0.018, speed: 0.52, light: 0xff4444, orbit: 20 },
+      { file: 'SmallPurpleFish.fbx', y: -48, x: 0, z: -20, scale: 0.02, speed: 0.46, light: 0xaa44ff, orbit: 27 },
+      { file: 'SmallWhiteFish.fbx', y: -55, x: 0, z: -16, scale: 0.018, speed: 0.5, light: 0xccddee, orbit: 23 },
+      // Mid-shallow (y: -50 to -120): dolphins, medium fish
+      { file: 'Dolphin.fbx', y: -60, x: 0, z: -28, scale: 0.018, speed: 0.3, light: 0x88bbdd, orbit: 35 },
+      { file: 'MediumGreenFish.fbx', y: -70, x: 0, z: -18, scale: 0.015, speed: 0.35, light: 0x44aa66, orbit: 28 },
+      { file: 'Dolphin.fbx', y: -80, x: 0, z: -22, scale: 0.015, speed: 0.28, light: 0x77aacc, orbit: 30 },
+      { file: 'MediumYellowFish.fbx', y: -85, x: 0, z: -16, scale: 0.015, speed: 0.38, light: 0xddaa44, orbit: 25 },
+      { file: 'SmallBlueFish.fbx', y: -90, x: 0, z: -20, scale: 0.018, speed: 0.5, light: 0x4488ff, orbit: 22 },
+      { file: 'MediumBrownFish.fbx', y: -100, x: 0, z: -14, scale: 0.015, speed: 0.32, light: 0x886644, orbit: 26 },
+      { file: 'ClowFish.fbx', y: -110, x: 0, z: -22, scale: 0.015, speed: 0.4, light: 0xff9944, orbit: 24 },
+      // Mid (y: -120 to -220): octopus, turtles, jellyfish
+      { file: 'SeaTurtle.fbx', y: -130, x: 0, z: -24, scale: 0.018, speed: 0.12, light: 0x66aa88, orbit: 20 },
+      { file: 'Jellyfish.fbx', y: -140, x: 0, z: -18, scale: 0.025, speed: 0.06, light: 0xaa44ff, orbit: 15 },
+      { file: 'OrangeOctopus.fbx', y: -150, x: 0, z: -20, scale: 0.018, speed: 0.08, light: 0xff8844, orbit: 22 },
+      { file: 'Jellyfish.fbx', y: -160, x: 0, z: -14, scale: 0.02, speed: 0.05, light: 0xcc66ff, orbit: 18 },
+      { file: 'SeaTurtle.fbx', y: -175, x: 0, z: -26, scale: 0.015, speed: 0.1, light: 0x44aa66, orbit: 22 },
+      { file: 'PurpleOctopus.fbx', y: -185, x: 0, z: -18, scale: 0.018, speed: 0.06, light: 0x8844ff, orbit: 20 },
+      { file: 'Jellyfish.fbx', y: -195, x: 0, z: -16, scale: 0.018, speed: 0.07, light: 0xff44aa, orbit: 16 },
+      { file: 'MediumGrayFish.fbx', y: -210, x: 0, z: -20, scale: 0.012, speed: 0.3, light: 0x889999, orbit: 25 },
+      // Deep-mid (y: -220 to -340): sharks, more octopus/jellyfish
+      { file: 'HammerheadShark.fbx', y: -230, x: 0, z: -30, scale: 0.015, speed: 0.2, light: 0x88aacc, orbit: 35 },
+      { file: 'Jellyfish.fbx', y: -245, x: 0, z: -14, scale: 0.025, speed: 0.04, light: 0x00ffaa, orbit: 15 },
+      { file: 'RedOctopus.fbx', y: -255, x: 0, z: -20, scale: 0.018, speed: 0.05, light: 0xff4444, orbit: 22 },
+      { file: 'TigerShark.fbx', y: -270, x: 0, z: -32, scale: 0.012, speed: 0.18, light: 0x88aaaa, orbit: 38 },
+      { file: 'Jellyfish.fbx', y: -285, x: 0, z: -16, scale: 0.02, speed: 0.035, light: 0xcc44ff, orbit: 18 },
+      { file: 'WhiteShark.fbx', y: -300, x: 0, z: -35, scale: 0.012, speed: 0.15, light: 0xaabbcc, orbit: 40 },
+      { file: 'Jellyfish.fbx', y: -315, x: 0, z: -12, scale: 0.022, speed: 0.03, light: 0x44ffaa, orbit: 16 },
+      { file: 'PurpleOctopus.fbx', y: -330, x: 0, z: -22, scale: 0.015, speed: 0.04, light: 0xff4488, orbit: 20 },
+      // Deep (y: -340 to -420): whales, jellyfish swarms
+      { file: 'KillerWhale.fbx', y: -350, x: 0, z: -35, scale: 0.01, speed: 0.12, light: 0x6688aa, orbit: 40 },
+      { file: 'Jellyfish.fbx', y: -365, x: 0, z: -14, scale: 0.02, speed: 0.03, light: 0xff66cc, orbit: 15 },
+      { file: 'Jellyfish.fbx', y: -380, x: 0, z: -18, scale: 0.025, speed: 0.025, light: 0x00ffcc, orbit: 18 },
+      { file: 'BlueWhale.fbx', y: -395, x: 0, z: -40, scale: 0.008, speed: 0.08, light: 0x4466aa, orbit: 45 },
+      { file: 'Jellyfish.fbx', y: -410, x: 0, z: -12, scale: 0.02, speed: 0.03, light: 0x88ff44, orbit: 16 },
+      // Abyss (y: -420+): bioluminescent jellyfish and octopus
+      { file: 'Jellyfish.fbx', y: -430, x: 0, z: -14, scale: 0.025, speed: 0.025, light: 0x00ffcc, orbit: 15 },
+      { file: 'PurpleOctopus.fbx', y: -445, x: 0, z: -20, scale: 0.02, speed: 0.03, light: 0xaa22ff, orbit: 20 },
+      { file: 'Jellyfish.fbx', y: -460, x: 0, z: -16, scale: 0.022, speed: 0.02, light: 0xff2288, orbit: 18 },
+      { file: 'Jellyfish.fbx', y: -475, x: 0, z: -12, scale: 0.02, speed: 0.025, light: 0x44ffff, orbit: 16 },
+      { file: 'OrangeOctopus.fbx', y: -490, x: 0, z: -22, scale: 0.018, speed: 0.02, light: 0xff8844, orbit: 22 },
+      { file: 'Jellyfish.fbx', y: -505, x: 0, z: -14, scale: 0.025, speed: 0.02, light: 0x22ffaa, orbit: 15 },
+      { file: 'Jellyfish.fbx', y: -520, x: 0, z: -18, scale: 0.018, speed: 0.03, light: 0xff88cc, orbit: 16 },
+      { file: 'RedOctopus.fbx', y: -535, x: 0, z: -20, scale: 0.015, speed: 0.025, light: 0xff4466, orbit: 20 },
+      { file: 'Jellyfish.fbx', y: -550, x: 0, z: -12, scale: 0.02, speed: 0.02, light: 0x44ffff, orbit: 18 },
     ]
 
     creatureConfig.forEach((cfg, i) => {
@@ -249,22 +320,43 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
         fbx.scale.setScalar(cfg.scale)
         fbx.position.set(cfg.x, cfg.y, cfg.z)
 
-        // Ensure materials are visible with emissive properties
+        // Depth-scaled bioluminescence: deeper = brighter glow
+        const depthFactor = Math.min(1, Math.abs(cfg.y) / 500)
+        const emissiveIntensity = 0.4 + depthFactor * 0.6 // always visible
+        const lightIntensity = 2.0 + depthFactor * 4.0
+        const lightDistance = 30 + depthFactor * 30
+
+        // Pre-load texture synchronously if available
+        const texturePath = TEXTURE_MAP[cfg.file]
+        const tex = texturePath ? textureLoader.load(texturePath) : null
+        if (tex) tex.colorSpace = THREE.SRGBColorSpace
+
+        // Apply material with texture + emissive glow
         fbx.traverse((child) => {
           if (child instanceof THREE.Mesh) {
             child.material = new THREE.MeshStandardMaterial({
-              color: cfg.light,
+              map: tex,
+              color: tex ? 0xffffff : cfg.light,
               emissive: cfg.light,
-              emissiveIntensity: 0.3,
-              roughness: 0.5,
-              metalness: 0.1,
+              emissiveIntensity,
+              roughness: 0.6,
+              metalness: 0.05,
             })
           }
         })
 
-        // Each creature gets its own point light so it's always visible
-        const light = new THREE.PointLight(cfg.light, 1.5, 25, 2)
+        const light = new THREE.PointLight(cfg.light, lightIntensity, lightDistance, 2)
         fbx.add(light)
+
+        // Play embedded FBX animation if present
+        let mixer: THREE.AnimationMixer | null = null
+        if (fbx.animations && fbx.animations.length > 0) {
+          mixer = new THREE.AnimationMixer(fbx)
+          const action = mixer.clipAction(fbx.animations[0])
+          action.play()
+          // Vary playback speed slightly per creature for natural look
+          action.timeScale = 0.6 + Math.random() * 0.6
+        }
 
         scene.add(fbx)
         seaCreatures.push({
@@ -272,44 +364,72 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
           baseY: cfg.y,
           speed: cfg.speed,
           phase: i * 1.3,
-          swimRadius: 15,
+          orbit: (cfg as { orbit?: number }).orbit ?? 25,
+          isJellyfish: cfg.file === 'Jellyfish.fbx',
+          depthFactor,
+          pointLight: light,
+          mixer,
+          baseScale: cfg.scale,
         })
       }, undefined, (err) => {
         console.warn(`Failed to load creature ${cfg.file}:`, err)
       })
     })
 
-    // ── Anglerfish GLB model at the abyss ──
+    // ── Anglerfish model (by Petr Janečka, CC BY 4.0) ──
     let anglerfishModel: THREE.Group | null = null
     const gltfLoader = new GLTFLoader()
-    gltfLoader.load('/assets/Meshy_AI_Abyssal_Angler_0328055306_texture.glb', (gltf) => {
+    gltfLoader.load('/assets/anglerfish/scene.gltf', (gltf) => {
       anglerfishModel = gltf.scene
-      anglerfishModel.scale.setScalar(8)
-      anglerfishModel.position.set(5, -420, -10)
+      anglerfishModel.visible = false
 
-      // Make it visible in the dark with emissive materials
+      // Auto-scale to ~10 world units
+      const box = new THREE.Box3().setFromObject(anglerfishModel)
+      const size = new THREE.Vector3()
+      box.getSize(size)
+      const scaleFactor = 10 / Math.max(size.x, size.y, size.z)
+      anglerfishModel.scale.setScalar(scaleFactor)
+
+      // Boost emissive for deep-sea visibility
       anglerfishModel.traverse((child) => {
         if (child instanceof THREE.Mesh && child.material) {
           const mat = child.material as THREE.MeshStandardMaterial
-          if (mat.emissive) {
-            mat.emissiveIntensity = 0.2
+          if (mat.emissiveMap) {
+            mat.emissiveIntensity = 3.0
+          } else if (mat.emissive) {
+            mat.emissive.set(0xE8913A)
+            mat.emissiveIntensity = 0.5
           }
+          child.castShadow = false
+          child.receiveShadow = false
         }
       })
 
-      // Strong bioluminescent lights
-      const lureLight = new THREE.PointLight(0x00ff88, 5, 60, 2)
-      lureLight.position.set(0, 3, 4)
+      // Lure light + visible glowing orb
+      const lureLight = new THREE.PointLight(0x44ffaa, 25, 50, 1.5)
+      lureLight.position.set(0, 4, 5)
       anglerfishModel.add(lureLight)
-      const bodyLight = new THREE.PointLight(0xE8913A, 2, 40, 2)
+      const lureSphere = new THREE.Mesh(
+        new THREE.SphereGeometry(0.3, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0x44ffaa, transparent: true, opacity: 0.9 })
+      )
+      lureSphere.position.copy(lureLight.position)
+      lureSphere.name = 'lure-sphere'
+      anglerfishModel.add(lureSphere)
+
+      // Body + belly + rim lights
+      const bodyLight = new THREE.PointLight(0xE8913A, 10, 30, 1.5)
       anglerfishModel.add(bodyLight)
-      const ambLight = new THREE.PointLight(0x4488aa, 3, 50, 2)
-      ambLight.position.set(0, 0, -3)
-      anglerfishModel.add(ambLight)
+      const bellyLight = new THREE.PointLight(0x4488cc, 5, 25, 1.5)
+      bellyLight.position.set(0, -3, 1)
+      anglerfishModel.add(bellyLight)
+      const rimLight = new THREE.PointLight(0x2244aa, 4, 20, 1.5)
+      rimLight.position.set(0, 1, -5)
+      anglerfishModel.add(rimLight)
 
       scene.add(anglerfishModel)
     }, undefined, (err) => {
-      console.warn('Failed to load anglerfish GLB:', err)
+      console.warn('Failed to load anglerfish:', err)
     })
 
     // ── Lighting ──
@@ -332,16 +452,38 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
 
     // ── Animation loop ──
     const clock = new THREE.Clock()
+    let sceneSignaled = false
+    let stableFrameCount = 0
+    const FPS_THRESHOLD = 40 // frames per second considered "stable"
+    const STABLE_FRAMES_NEEDED = 60 // ~1 second of stable frames
 
     function animate() {
       frameIdRef.current = requestAnimationFrame(animate)
-      const elapsed = clock.getElapsedTime()
+      const delta = clock.getDelta()
+      const elapsed = clock.elapsedTime
       const s = stateRef.current
+
+      // Track FPS stability and signal when ready
+      if (!sceneSignaled && delta > 0) {
+        const fps = 1 / delta
+        if (fps >= FPS_THRESHOLD) {
+          stableFrameCount++
+        } else {
+          stableFrameCount = Math.max(0, stableFrameCount - 5)
+        }
+        if (stableFrameCount >= STABLE_FRAMES_NEEDED) {
+          sceneSignaled = true
+          onSceneReadyRef.current?.()
+        }
+      }
+
+      // Tick all creature animation mixers
+      seaCreatures.forEach(c => { if (c.mixer) c.mixer.update(delta) })
 
       water.material.uniforms['time'].value += 1.0 / 60.0
 
       if (s.started) {
-        const targetY = Math.max(-450, 5 - s.depth * 1.5)
+        const targetY = Math.max(-580, 5 - s.depth * 1.5)
         camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.08)
         camera.position.x = Math.sin(elapsed * 0.05) * 1.5
         camera.position.z = Math.cos(elapsed * 0.03) * 1.5
@@ -355,37 +497,37 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
         sky.visible = true
         water.visible = true
 
-        // Tint plane
+        // Tint plane: gradual darkening, capped so point lights remain visible at depth
         tintPlane.position.copy(camera.position)
         tintPlane.position.z -= 50
         tintPlane.lookAt(camera.position)
         if (isUnderwater) {
-          tintMat.opacity = Math.min(0.93, t * 0.95)
+          tintMat.opacity = Math.min(0.55, t * 0.6)
           tintMat.color.lerpColors(
             new THREE.Color(0x0a3050),
-            new THREE.Color(0x020510),
+            new THREE.Color(0x030812),
             t
           )
         } else {
           tintMat.opacity = 0
         }
 
-        // Fog: gradual thickening
-        const fogDensity = isUnderwater ? 0.001 + t * 0.007 : 0
+        // Fog: gradual, light enough for creature/anglerfish lights to show
+        const fogDensity = isUnderwater ? 0.001 + t * 0.004 : 0
         ;(scene.fog as THREE.FogExp2).density = fogDensity
         ;(scene.fog as THREE.FogExp2).color.lerpColors(
           new THREE.Color(0x0a3050),
-          new THREE.Color(0x020510),
+          new THREE.Color(0x030812),
           t
         )
 
-        // Exposure: reaches near-dark at max depth
+        // Exposure: darkens gradually but stays high enough to see lit objects
         renderer.toneMappingExposure = isUnderwater
-          ? Math.max(0.03, 0.5 - t * 0.47)
+          ? Math.max(0.12, 0.5 - t * 0.38)
           : 0.5
 
-        // Ambient: reaches near-dark at max depth
-        ambientLight.intensity = Math.max(0.02, 0.5 - t * 0.48)
+        // Ambient: dims but never fully dark
+        ambientLight.intensity = Math.max(0.05, 0.5 - t * 0.45)
         ambientLight.color.lerpColors(new THREE.Color(0x4488aa), new THREE.Color(0x112233), t)
 
         // God rays: linger longer near surface
@@ -438,24 +580,59 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
         // ── Sea creature swimming animations ──
         seaCreatures.forEach((c) => {
           const t = elapsed * c.speed + c.phase
-          c.mesh.position.x += Math.sin(t) * 0.03 * c.speed
-          c.mesh.position.z += Math.cos(t * 0.7) * 0.02 * c.speed
-          c.mesh.position.y = c.baseY + Math.sin(t * 0.5) * 1.5
-          c.mesh.rotation.y = Math.sin(t) * 0.2
+
+          // Circular orbit: creatures swim in wide circles through the scene
+          c.mesh.position.x = Math.sin(t) * c.orbit
+          c.mesh.position.z = -18 + Math.cos(t) * (c.orbit * 0.6)
+          c.mesh.position.y = c.baseY + Math.sin(t * 0.5) * 2
+
+          // Face the direction of travel
+          c.mesh.rotation.y = t + Math.PI * 0.5
+
+          // Jellyfish: rhythmic scale pulsing
+          if (c.isJellyfish) {
+            const pulse = 1.0 + Math.sin(elapsed * 1.2 + c.phase) * 0.15
+            c.mesh.scale.set(c.baseScale, c.baseScale * pulse, c.baseScale)
+          }
+
+          // Bioluminescent pulsing
+          const baseLightIntensity = 2.0 + c.depthFactor * 4.0
+          const pulseAmount = c.depthFactor * 2.0
+          c.pointLight.intensity = baseLightIntensity + Math.sin(elapsed * 1.5 + c.phase * 2) * pulseAmount
         })
 
-        // ── Anglerfish GLB swimming animation ──
+        // ── Anglerfish GLB: only visible when camera is near the bottom ──
         if (anglerfishModel) {
-          anglerfishModel.position.x = 5 + Math.sin(elapsed * 0.12) * 10
-          anglerfishModel.position.z = -10 + Math.cos(elapsed * 0.08) * 6
-          anglerfishModel.position.y = -420 + Math.sin(elapsed * 0.15) * 3
-          anglerfishModel.rotation.y = Math.sin(elapsed * 0.12) * 0.3 + Math.PI * 0.8
-          // Lure pulsing
-          anglerfishModel.children.forEach(child => {
-            if (child instanceof THREE.PointLight && child.color.getHex() === 0x00ff88) {
-              child.intensity = 3 + Math.sin(elapsed * 2) * 1.5
-            }
-          })
+          // Show anglerfish only when user has scrolled past all encounters (report section)
+          const encs = encountersRef.current
+          const lastEncDepth = encs.length > 0 ? encs[encs.length - 1].depth : 9999
+          const showAngler = s.depth > lastEncDepth + 20
+          anglerfishModel.visible = showAngler
+          if (showAngler) {
+            // Position in front of camera, slightly below, with gentle idle sway
+            anglerfishModel.position.x = camera.position.x + Math.sin(elapsed * 0.08) * 3
+            anglerfishModel.position.z = camera.position.z - 15
+            anglerfishModel.position.y = camera.position.y - 8 + Math.sin(elapsed * 0.2) * 1.5
+
+            // Face toward the camera
+            anglerfishModel.lookAt(camera.position)
+            // Add subtle sway on top of lookAt
+            anglerfishModel.rotation.y += Math.sin(elapsed * 0.1) * 0.1
+            anglerfishModel.rotation.z += Math.sin(elapsed * 0.12) * 0.03
+            // Lure pulsing (bright to dim like attracting prey)
+            const pulse = 0.5 + 0.5 * Math.sin(elapsed * 1.5)
+            anglerfishModel.children.forEach(child => {
+              if (child instanceof THREE.PointLight && child.color.getHex() === 0x44ffaa) {
+                child.intensity = 8 + pulse * 20
+              }
+              if (child instanceof THREE.Mesh && child.name === 'lure-sphere') {
+                const mat = child.material as THREE.MeshBasicMaterial
+                mat.opacity = 0.4 + pulse * 0.6
+                const s = 0.8 + pulse * 0.5
+                child.scale.set(s, s, s)
+              }
+            })
+          }
         }
 
         // Camera pitch
