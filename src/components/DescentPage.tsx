@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect, useCallback, type FormEvent } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { DarkPattern, ScanResult, Encounter } from '../types'
 import { TAXONOMY } from '../config/taxonomy'
@@ -16,6 +16,7 @@ interface Props {
   scanError?: string
   streamingUrl?: string | null
   scanStatus?: string
+  sceneReady?: boolean
   onExplore: (url: string) => void
   onDepthChange: (depth: number) => void
   onActiveEncounterChange: (index: number) => void
@@ -24,23 +25,23 @@ interface Props {
 
 const METERS_PER_PIXEL = 0.08
 const SECTION_HEIGHT = 1400
-const INTRO_HEIGHT = 600
+const INTRO_HEIGHT = 600 // Cards start sooner after going underwater
 
 const GRADE_COLORS: Record<string, string> = {
   A: '#44ff88', B: '#88ff44', C: '#ffcc00', D: '#ff8800', F: '#ff4444',
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  PENDING: 'Starting web agent...',
-  RUNNING: 'Agent navigating site...',
-  COMPLETED: 'Analysis complete',
-  FAILED: 'Scan failed',
-  CANCELLED: 'Scan cancelled',
+  PENDING: 'Deploying scanner...',
+  RUNNING: 'Scanning for dark patterns...',
+  COMPLETED: 'Analysis complete!',
+  FAILED: 'Scan failed. Try a different URL.',
+  CANCELLED: 'Scan stopped',
 }
 
 export function DescentPage({
-  patterns, scanResult, encounters, started, scanning, scanError,
-  streamingUrl, scanStatus,
+  patterns, url, scanResult, encounters, started, scanning, scanError,
+  streamingUrl, scanStatus, sceneReady,
   onExplore, onDepthChange, onActiveEncounterChange, onReset,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -59,13 +60,9 @@ export function DescentPage({
 
   const cardsStart = INTRO_HEIGHT
   const cardsEnd = cardsStart + sorted.length * SECTION_HEIGHT
-  const bossHeight = 1400
-  const reportHeight = 2400
-  const totalHeight = cardsEnd + bossHeight + reportHeight
-
-  const currentZone = DEPTH_ZONES.find(
-    (z) => scrollDepth >= z.startDepth && scrollDepth < z.endDepth
-  ) ?? DEPTH_ZONES[DEPTH_ZONES.length - 1]
+  const reportHeight = 1600
+  const totalHeight = cardsEnd + reportHeight
+  const maxDepth = Math.round(totalHeight * METERS_PER_PIXEL)
 
   const handleScroll = useCallback(() => {
     if (!containerRef.current) return
@@ -75,7 +72,9 @@ export function DescentPage({
     setScrollDepth(depth)
     onDepthChange(depth)
 
+    // Determine which monster is active based on scroll position
     let newActive = -1
+    // Only show cards within the cards section, not in boss/report
     if (sy < cardsEnd) {
       for (let i = sorted.length - 1; i >= 0; i--) {
         const sectionTop = cardsStart + i * SECTION_HEIGHT
@@ -91,7 +90,7 @@ export function DescentPage({
       setActiveIndex(newActive)
       onActiveEncounterChange(newActive)
     }
-  }, [sorted.length, cardsStart, activeIndex, onDepthChange, onActiveEncounterChange, cardsEnd])
+  }, [sorted.length, cardsStart, activeIndex, onDepthChange, onActiveEncounterChange])
 
   useEffect(() => {
     const el = containerRef.current
@@ -100,13 +99,14 @@ export function DescentPage({
     return () => el.removeEventListener('scroll', handleScroll)
   }, [handleScroll])
 
+  // Scroll to just below intro when starting
   useEffect(() => {
     if (started && containerRef.current) {
       containerRef.current.scrollTo({ top: INTRO_HEIGHT * 0.8, behavior: 'smooth' })
     }
   }, [started])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     onExplore(inputUrl.trim() || 'amazon.com')
   }
@@ -129,7 +129,7 @@ export function DescentPage({
         zIndex: 2,
       }}
     >
-      {/* Scroll spacer - only expand to full height after scan starts */}
+      {/* Scroll spacer */}
       <div style={{ position: 'relative', width: '100%', height: started ? totalHeight : INTRO_HEIGHT }}>
 
         {/* === Intro / URL Input (above water) === */}
@@ -145,7 +145,7 @@ export function DescentPage({
             fontFamily: 'var(--pixel-font)',
             fontSize: 'clamp(2rem, 6vw, 4rem)',
             color: '#E8913A',
-            textShadow: '0 2px 8px rgba(0, 0, 0, 0.8), 0 0 30px rgba(232, 145, 58, 0.4)',
+            textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 30px rgba(232, 145, 58, 0.4)',
             marginBottom: '1.5rem',
             textAlign: 'center',
           }}>
@@ -154,38 +154,78 @@ export function DescentPage({
 
           <p style={{
             fontFamily: 'var(--pixel-font)',
-            fontSize: 'clamp(0.55rem, 1.4vw, 0.8rem)',
+            fontSize: 'clamp(0.55rem, 1.4vw, 1rem)',
             color: '#ddeeff',
-            textShadow: '0 1px 6px rgba(0, 0, 0, 0.9)',
             textAlign: 'center',
             marginBottom: '2.5rem',
             lineHeight: 2,
+            textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
           }}>
             How deep does the manipulation go?
           </p>
 
-          {!started && !scanning && (
-            <form onSubmit={handleSubmit} style={{
+          {!started && !scanning && !sceneReady && (
+            <div style={{
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: '1.2rem',
-              width: '90%',
-              maxWidth: 450,
+              gap: '0.8rem',
             }}>
+              <p style={{
+                fontFamily: 'var(--pixel-font)',
+                fontSize: 'clamp(0.5rem, 1.2vw, 0.7rem)',
+                color: '#E8913A',
+                animation: 'pulse 1.5s ease-in-out infinite',
+                textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
+              }}>
+                Preparing the ocean...
+              </p>
+              <div style={{
+                width: 200,
+                height: 4,
+                background: 'rgba(232, 145, 58, 0.15)',
+                borderRadius: 2,
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  height: '100%',
+                  background: '#E8913A',
+                  borderRadius: 2,
+                  animation: 'shaderLoad 2s ease-in-out infinite',
+                }} />
+              </div>
+            </div>
+          )}
+
+          {!started && !scanning && sceneReady && (
+            <motion.form
+              onSubmit={handleSubmit}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '1.2rem',
+                width: '90%',
+                maxWidth: 450,
+              }}
+            >
               <div style={{
                 width: '100%',
                 border: '2px solid rgba(232, 145, 58, 0.5)',
                 borderRadius: 4,
-                background: 'rgba(0, 0, 0, 0.4)',
-                backdropFilter: 'blur(8px)',
+                background: '#1a1a2e',
                 padding: '2px',
               }}>
                 <input
                   type="text"
+                  className="descent-url-input"
                   value={inputUrl}
                   onChange={(e) => setInputUrl(e.target.value)}
-                  placeholder="Enter any URL..."
+                  placeholder="amazon.com, booking.com..."
+                  autoFocus
                   style={{
                     width: '100%',
                     padding: '14px 16px',
@@ -202,22 +242,21 @@ export function DescentPage({
                 fontFamily: 'var(--pixel-font)',
                 fontSize: '0.8rem',
                 padding: '14px 40px',
-                background: 'rgba(232, 145, 58, 0.15)',
+                background: '#E8913A',
                 border: '2px solid #E8913A',
-                textShadow: '0 1px 4px rgba(0, 0, 0, 0.6)',
-                color: '#E8913A',
+                color: '#000',
                 cursor: 'pointer',
                 letterSpacing: '0.2em',
                 transition: 'all 0.2s',
               }}>
-                EXPLORE
+                DIVE IN
               </button>
               {scanError && (
                 <p style={{
                   fontFamily: 'var(--pixel-font)',
                   fontSize: 'clamp(0.4rem, 1vw, 0.55rem)',
                   color: '#ff4444',
-                  textShadow: '0 1px 4px rgba(0,0,0,0.8)',
+                  textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
                   textAlign: 'center',
                   maxWidth: 400,
                   lineHeight: 1.8,
@@ -225,81 +264,99 @@ export function DescentPage({
                   {scanError}
                 </p>
               )}
-            </form>
+            </motion.form>
           )}
 
           {scanning && (
-            <div style={{ textAlign: 'center', width: '90%', maxWidth: 520 }}>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '1rem',
+              width: '90%',
+              maxWidth: 450,
+            }}>
               {streamingUrl ? (
                 <div style={{
-                  border: '1px solid rgba(232, 145, 58, 0.3)',
-                  borderRadius: 6,
+                  width: '100%',
+                  aspectRatio: '4 / 3',
+                  maxHeight: 280,
+                  border: '2px solid rgba(232, 145, 58, 0.3)',
+                  borderRadius: 8,
                   overflow: 'hidden',
-                  marginBottom: '1rem',
-                  background: '#000',
+                  background: 'rgba(0, 0, 0, 0.6)',
                 }}>
                   <iframe
                     src={streamingUrl}
-                    style={{ width: '100%', height: 280, border: 'none', display: 'block' }}
-                    title="Live agent session"
+                    title="Live agent view"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      border: 'none',
+                    }}
                     sandbox="allow-scripts allow-same-origin"
                   />
                 </div>
               ) : (
-                <div style={{
-                  width: '100%',
-                  height: 280,
-                  marginBottom: '1rem',
-                  border: '1px solid rgba(232, 145, 58, 0.2)',
-                  borderRadius: 6,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: 'rgba(0,0,0,0.3)',
+                <p style={{
+                  fontFamily: 'var(--pixel-font)',
+                  fontSize: 'clamp(0.7rem, 1.6vw, 1rem)',
+                  color: '#E8913A',
+                  animation: 'pulse 1.5s ease-in-out infinite',
+                  textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
                 }}>
-                  <p style={{
-                    fontFamily: 'var(--pixel-font)',
-                    fontSize: 'clamp(0.4rem, 1vw, 0.55rem)',
-                    color: '#445',
-                    animation: 'pulse 1.5s ease-in-out infinite',
-                  }}>
-                    Waiting for agent...
-                  </p>
-                </div>
+                  SCANNING...
+                </p>
               )}
+
               <p style={{
                 fontFamily: 'var(--pixel-font)',
-                fontSize: 'clamp(0.6rem, 1.4vw, 0.75rem)',
-                color: '#E8913A',
-                animation: 'pulse 1.5s ease-in-out infinite',
-                textShadow: '0 1px 6px rgba(0,0,0,0.9)',
+                fontSize: 'clamp(0.55rem, 1.2vw, 0.75rem)',
+                color: '#88aabb',
+                textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
               }}>
-                SCANNING...
+                {STATUS_LABELS[scanStatus || 'PENDING'] || 'Processing...'}
               </p>
               <p style={{
                 fontFamily: 'var(--pixel-font)',
-                fontSize: 'clamp(0.35rem, 0.9vw, 0.5rem)',
-                color: '#556',
-                marginTop: '0.4rem',
-                textShadow: '0 1px 4px rgba(0,0,0,0.8)',
+                fontSize: 'clamp(0.45rem, 0.9vw, 0.55rem)',
+                color: '#aabbcc',
+                textShadow: '0 0 4px #000, 0 0 4px #000',
+                marginTop: '0.3rem',
               }}>
-                {STATUS_LABELS[scanStatus ?? ''] ?? 'Deploying web agent...'}
+                Usually takes 30-60 seconds
               </p>
             </div>
           )}
 
           {started && (
-            <p style={{
-              fontFamily: 'var(--pixel-font)',
-              fontSize: 'clamp(0.5rem, 1.2vw, 0.7rem)',
-              color: '#ddeeff',
-              textShadow: '0 1px 6px rgba(0, 0, 0, 0.9)',
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '0.5rem',
               marginTop: '1rem',
-              animation: 'pulse 2s ease-in-out infinite',
-              textAlign: 'center',
             }}>
-              SCROLL TO DESCEND
-            </p>
+              <p style={{
+                fontFamily: 'var(--pixel-font)',
+                fontSize: 'clamp(0.45rem, 1vw, 0.65rem)',
+                color: '#ddeeff',
+                textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
+                textAlign: 'center',
+                animation: 'pulse 2s ease-in-out infinite',
+                lineHeight: 1.8,
+              }}>
+                Scroll down to begin your descent
+              </p>
+              <span style={{
+                fontSize: 'clamp(1rem, 2vw, 1.5rem)',
+                color: '#E8913A',
+                animation: 'bounce 1.5s ease-in-out infinite',
+                display: 'block',
+              }}>
+                v
+              </span>
+            </div>
           )}
         </div>
 
@@ -308,6 +365,7 @@ export function DescentPage({
           const sectionTop = cardsStart + i * SECTION_HEIGHT
           return (
             <div key={i} style={{ position: 'absolute', top: sectionTop, height: SECTION_HEIGHT, width: '100%' }}>
+              {/* Zone labels that fall within this section */}
               {DEPTH_ZONES.slice(1).map((zone) => {
                 const zonePixel = zone.startDepth / METERS_PER_PIXEL
                 if (zonePixel >= sectionTop && zonePixel < sectionTop + SECTION_HEIGHT) {
@@ -326,7 +384,7 @@ export function DescentPage({
                         fontSize: 'clamp(1.2rem, 3vw, 2rem)',
                         color: 'rgba(255,255,255,0.35)',
                         letterSpacing: '0.4em',
-                        textShadow: '0 0 30px rgba(255,255,255,0.15), 0 2px 10px rgba(0,0,0,0.9)',
+                        textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
                       }}>
                         {zone.name}
                       </p>
@@ -342,11 +400,14 @@ export function DescentPage({
         {/* === Boss + Report Split Section === */}
         <BossReportSection
           top={cardsEnd}
-          height={bossHeight + reportHeight}
+          height={reportHeight}
           scanResult={scanResult}
           gradeColor={gradeColor}
           scrollY={scrollY}
-          onReset={onReset}
+          onReset={onReset ? () => {
+            containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+            setTimeout(() => onReset(), 1500)
+          } : undefined}
         />
       </div>
 
@@ -374,6 +435,7 @@ export function DescentPage({
               overflow: 'hidden',
             }}
           >
+            {/* Sprite image */}
             {SPRITE_MAP[activePattern.pattern_type] && (
               <motion.img
                 src={SPRITE_MAP[activePattern.pattern_type]}
@@ -390,6 +452,7 @@ export function DescentPage({
               />
             )}
 
+            {/* Info card */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -423,15 +486,6 @@ export function DescentPage({
               </div>
 
               <p style={{
-                fontFamily: 'var(--pixel-font)',
-                fontSize: 'clamp(0.4rem, 0.9vw, 0.55rem)',
-                color: '#88aabb',
-                marginBottom: '0.5rem',
-              }}>
-                {activeTaxonomy.name}
-              </p>
-
-              <p style={{
                 fontFamily: "'Georgia', serif",
                 fontSize: 'clamp(0.75rem, 1.4vw, 0.95rem)',
                 color: '#8899aa',
@@ -457,16 +511,6 @@ export function DescentPage({
               </p>
 
               <p style={{
-                fontFamily: "'Georgia', serif",
-                fontSize: 'clamp(0.7rem, 1.2vw, 0.85rem)',
-                color: '#667788',
-                lineHeight: 1.6,
-                marginBottom: '0.5rem',
-              }}>
-                Example: {activeTaxonomy.example}
-              </p>
-
-              <p style={{
                 fontFamily: 'var(--pixel-font)',
                 fontSize: 'clamp(0.3rem, 0.7vw, 0.4rem)',
                 color: '#556',
@@ -478,7 +522,7 @@ export function DescentPage({
         )}
       </AnimatePresence>
 
-      {/* === Sticky Depth Meter === */}
+      {/* === Sticky Depth Meter (bigger, fills top-to-bottom) === */}
       {started && (
         <div style={{
           position: 'fixed',
@@ -492,17 +536,6 @@ export function DescentPage({
           gap: 12,
           pointerEvents: 'none',
         }}>
-          <p style={{
-            fontFamily: 'var(--pixel-font)',
-            fontSize: 'clamp(0.45rem, 1vw, 0.6rem)',
-            color: '#889',
-            textAlign: 'center',
-            maxWidth: 100,
-            textShadow: '0 1px 6px rgba(0,0,0,0.9)',
-            letterSpacing: '0.1em',
-          }}>
-            {currentZone.name}
-          </p>
           <div style={{
             width: 6,
             flex: 1,
@@ -526,7 +559,7 @@ export function DescentPage({
             fontFamily: 'var(--pixel-font)',
             fontSize: 'clamp(0.8rem, 1.8vw, 1.2rem)',
             color: '#E8913A',
-            textShadow: '0 0 15px rgba(232, 145, 58, 0.6), 0 2px 6px rgba(0,0,0,0.9)',
+            textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
           }}>
             {scrollDepth}m
           </p>
@@ -538,6 +571,18 @@ export function DescentPage({
           0%, 100% { opacity: 0.3; }
           50% { opacity: 1; }
         }
+        .descent-url-input::placeholder {
+          color: rgba(232, 145, 58, 0.4);
+        }
+        @keyframes bounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(8px); }
+        }
+        @keyframes shaderLoad {
+          0% { width: 0%; }
+          50% { width: 100%; }
+          100% { width: 0%; }
+        }
       `}</style>
     </div>
   )
@@ -548,9 +593,11 @@ export function DescentPage({
 function BossReportSection({ top, height, scanResult, gradeColor, scrollY, onReset }: {
   top: number; height: number; scanResult: ScanResult; gradeColor: string; scrollY: number; onReset?: () => void
 }) {
+  const [copied, setCopied] = useState(false)
+
   const sectionScroll = Math.max(0, scrollY - top)
   const progress = Math.min(1, sectionScroll / (height * 0.4))
-  const showScore = progress > 0.3
+  const showScore = progress > 0.15
 
   const patternCounts = Object.entries(
     scanResult.patterns.reduce<Record<string, number>>((acc, p) => {
@@ -558,6 +605,13 @@ function BossReportSection({ top, height, scanResult, gradeColor, scrollY, onRes
       return acc
     }, {})
   )
+
+  const handleCopy = () => {
+    const text = `ANGLERFISH Safety Report\n${scanResult.url}\nGrade: ${scanResult.grade} | Safety Score: ${scanResult.overall_score}/100\n${scanResult.patterns.length} dark patterns found`
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2500)
+  }
 
   return (
     <div style={{ position: 'absolute', top, height, width: '100%' }}>
@@ -567,57 +621,21 @@ function BossReportSection({ top, height, scanResult, gradeColor, scrollY, onRes
         height: '100vh',
         display: 'flex',
         alignItems: 'center',
+        justifyContent: 'center',
         overflow: 'hidden',
       }}>
-        {/* Left half: Boss message */}
         <motion.div
-          animate={{ x: showScore ? 0 : '25%' }}
-          transition={{ duration: 0.8 }}
-          style={{
-            width: '50%',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '2rem',
-          }}
-        >
-          <p style={{
-            fontFamily: 'var(--pixel-font)',
-            fontSize: 'clamp(1.5rem, 4vw, 2.5rem)',
-            color: '#E8913A',
-            textShadow: '0 0 40px rgba(232, 145, 58, 0.5), 0 2px 8px rgba(0,0,0,0.8)',
-            marginBottom: '1rem',
-            textAlign: 'center',
-          }}>
-            THE ANGLERFISH
-          </p>
-          <p style={{
-            fontFamily: "'Georgia', serif",
-            fontSize: 'clamp(0.9rem, 2vw, 1.2rem)',
-            color: '#88aabb',
-            fontStyle: 'italic',
-            maxWidth: 400,
-            textAlign: 'center',
-            lineHeight: 1.8,
-            textShadow: '0 1px 6px rgba(0,0,0,0.8)',
-          }}>
-            On the internet, the pretty light is always bait.
-          </p>
-        </motion.div>
-
-        {/* Right half: Score (slides in) */}
-        <motion.div
-          initial={{ opacity: 0, x: 100 }}
-          animate={showScore ? { opacity: 1, x: 0 } : { opacity: 0, x: 100 }}
+          initial={{ opacity: 0, y: 40 }}
+          animate={showScore ? { opacity: 1, y: 0 } : { opacity: 0, y: 40 }}
           transition={{ duration: 0.6 }}
           style={{
-            width: '50%',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
             padding: '2rem',
+            maxWidth: 500,
+            width: '90%',
           }}
         >
           <p style={{
@@ -626,9 +644,9 @@ function BossReportSection({ top, height, scanResult, gradeColor, scrollY, onRes
             color: '#88aabb',
             marginBottom: '0.8rem',
             letterSpacing: '0.3em',
-            textShadow: '0 1px 6px rgba(0,0,0,0.8)',
+            textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
           }}>
-            THREAT ASSESSMENT
+            SAFETY REPORT
           </p>
 
           <motion.h2
@@ -651,10 +669,10 @@ function BossReportSection({ top, height, scanResult, gradeColor, scrollY, onRes
             fontFamily: 'var(--pixel-font)',
             fontSize: 'clamp(0.7rem, 1.5vw, 1rem)',
             color: gradeColor,
-            textShadow: '0 1px 6px rgba(0,0,0,0.8)',
+            textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
             marginBottom: '0.3rem',
           }}>
-            SCORE: {scanResult.overall_score}/100
+            SAFETY SCORE: {scanResult.overall_score}/100
           </p>
 
           <p style={{
@@ -662,9 +680,9 @@ function BossReportSection({ top, height, scanResult, gradeColor, scrollY, onRes
             fontSize: 'clamp(0.4rem, 0.9vw, 0.55rem)',
             color: '#aaa',
             marginBottom: '1.5rem',
-            textShadow: '0 1px 4px rgba(0,0,0,0.8)',
+            textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
           }}>
-            {scanResult.url} | {scanResult.patterns.length} patterns
+            {scanResult.url} | {scanResult.patterns.length} dark patterns found
           </p>
 
           <div style={{ width: '100%', maxWidth: 350 }}>
@@ -698,48 +716,52 @@ function BossReportSection({ top, height, scanResult, gradeColor, scrollY, onRes
             })}
           </div>
 
-          <motion.div
+          <motion.button
             initial={{ opacity: 0 }}
             animate={showScore ? { opacity: 1 } : { opacity: 0 }}
             transition={{ delay: 0.8 }}
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.7rem', marginTop: '1.5rem', pointerEvents: 'auto' }}
+            onClick={handleCopy}
+            style={{
+              fontFamily: 'var(--pixel-font)',
+              fontSize: 'clamp(0.45rem, 0.9vw, 0.6rem)',
+              padding: '10px 24px',
+              background: copied ? 'rgba(68, 255, 136, 0.15)' : 'rgba(232, 145, 58, 0.15)',
+              border: copied ? '2px solid #44ff88' : '2px solid #E8913A',
+              color: copied ? '#44ff88' : '#E8913A',
+              cursor: 'pointer',
+              marginTop: '1.5rem',
+              borderRadius: 4,
+              pointerEvents: 'auto',
+              transition: 'all 0.3s ease',
+              whiteSpace: 'nowrap',
+            }}
           >
-            <button
-              onClick={() => {
-                const text = `ANGLERFISH Threat Assessment\n${scanResult.url}\nGrade: ${scanResult.grade} | Score: ${scanResult.overall_score}/100\n${scanResult.patterns.length} dark patterns detected`
-                navigator.clipboard.writeText(text)
-              }}
+            {copied ? '\u2713  COPIED!' : 'COPY REPORT'}
+          </motion.button>
+
+          {onReset && (
+            <motion.button
+              initial={{ opacity: 0 }}
+              animate={showScore ? { opacity: 1 } : { opacity: 0 }}
+              transition={{ delay: 1.0 }}
+              onClick={onReset}
               style={{
                 fontFamily: 'var(--pixel-font)',
                 fontSize: 'clamp(0.45rem, 0.9vw, 0.6rem)',
                 padding: '10px 24px',
-                background: 'rgba(232, 145, 58, 0.15)',
-                border: '2px solid #E8913A',
-                color: '#E8913A',
+                background: 'transparent',
+                border: '2px solid rgba(136, 170, 187, 0.4)',
+                color: '#88aabb',
                 cursor: 'pointer',
+                marginTop: '0.8rem',
                 borderRadius: 4,
+                pointerEvents: 'auto',
+                transition: 'all 0.2s',
               }}
             >
-              COPY RESULTS
-            </button>
-            {onReset && (
-              <button
-                onClick={onReset}
-                style={{
-                  fontFamily: 'var(--pixel-font)',
-                  fontSize: 'clamp(0.4rem, 0.85vw, 0.55rem)',
-                  padding: '8px 20px',
-                  background: 'transparent',
-                  border: '1px solid rgba(136, 170, 187, 0.3)',
-                  color: '#88aabb',
-                  cursor: 'pointer',
-                  borderRadius: 4,
-                }}
-              >
-                TRY ANOTHER SITE?
-              </button>
-            )}
-          </motion.div>
+              TRY ANOTHER SITE?
+            </motion.button>
+          )}
         </motion.div>
       </div>
     </div>
