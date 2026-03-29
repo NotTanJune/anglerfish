@@ -45,8 +45,15 @@ export function checkRateLimit(ip: string): { allowed: boolean; remaining: numbe
 export function isAdmin(req: { headers: Record<string, string | string[] | undefined> }): boolean {
   const secret = process.env.ADMIN_SECRET
   if (!secret) return false
-  const header = req.headers['x-admin-secret']
-  return header === secret
+
+  // Check cookie
+  const cookieHeader = req.headers['cookie']
+  if (typeof cookieHeader === 'string') {
+    const match = cookieHeader.match(/anglerfish_admin=([^;]+)/)
+    if (match && match[1] === secret) return true
+  }
+
+  return false
 }
 
 export function getClientIp(req: { headers: Record<string, string | string[] | undefined>; socket?: { remoteAddress?: string } }): string {
