@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import type { AppState, ScanResult, Encounter, DarkPattern } from '../types'
 import { MONSTERS } from '../config/monsters'
-import { scanUrl } from '../services/api'
+import { startScan as scanUrl } from '../services/api'
 import { FALLBACK_PATTERNS } from '../config/fallbackData'
 
 function generateEncounters(patterns: DarkPattern[]): Encounter[] {

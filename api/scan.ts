@@ -1,9 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
-export const config = {
-  maxDuration: 60,
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
@@ -21,7 +17,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'TINYFISH_API_KEY not configured' })
     }
 
-    const response = await fetch('https://agent.tinyfish.ai/v1/automation/run', {
+    const response = await fetch('https://agent.tinyfish.ai/v1/automation/run-async', {
       method: 'POST',
       headers: {
         'X-API-Key': apiKey,
@@ -41,19 +37,19 @@ Return a JSON object with a "dark_patterns" array. Each item must have:
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error('TinyFish API error:', response.status, errorText)
+      console.error('TinyFish async start error:', response.status, errorText)
       return res.status(502).json({ error: `TinyFish error ${response.status}`, details: errorText.substring(0, 500) })
     }
 
     const json = await response.json()
+    const run_id = json.run_id ?? json.id
 
-    // Extract result - sync endpoint returns { run_id, status, result }
-    let result = json.result ?? json.data ?? json
-    if (typeof result === 'string') {
-      try { result = JSON.parse(result) } catch { /* keep */ }
+    if (!run_id) {
+      console.error('TinyFish returned no run_id:', json)
+      return res.status(502).json({ error: 'TinyFish did not return a run_id' })
     }
 
-    return res.status(200).json({ success: true, data: result })
+    return res.status(200).json({ run_id })
 
   } catch (error) {
     console.error('Scan handler error:', error)

@@ -4,7 +4,7 @@ import { OceanBackground } from './scene/OceanBackground'
 import { DescentPage } from './components/DescentPage'
 import { MONSTERS } from './config/monsters'
 import { FALLBACK_PATTERNS } from './config/fallbackData'
-import { scanUrl } from './services/api'
+import { startScan, pollScan } from './services/api'
 import type { ScanResult, Encounter, DarkPattern, PatternType } from './types'
 
 const VALID_TYPES: PatternType[] = [
@@ -13,11 +13,9 @@ const VALID_TYPES: PatternType[] = [
   'trick_questions', 'hidden_costs', 'bait_and_switch',
 ]
 
-// Map TinyFish raw response to our DarkPattern format
 function mapTinyFishResponse(data: unknown): DarkPattern[] | null {
   if (!data || typeof data !== 'object') return null
 
-  // Handle { dark_patterns: [...] } format
   const obj = data as Record<string, unknown>
   const items = Array.isArray(obj.dark_patterns) ? obj.dark_patterns
     : Array.isArray(obj.patterns) ? obj.patterns
@@ -43,7 +41,7 @@ function mapTinyFishResponse(data: unknown): DarkPattern[] | null {
 
 const METERS_PER_PIXEL = 0.08
 const CARD_SCROLL_HEIGHT = 1400
-const INTRO_HEIGHT = 600 // Reduced: cards start sooner after going underwater
+const INTRO_HEIGHT = 600
 
 function calculateScore(patterns: DarkPattern[]): number {
   if (patterns.length === 0) return 0
@@ -72,6 +70,9 @@ function buildEncounters(patterns: DarkPattern[]): Encounter[] {
   }))
 }
 
+const POLL_INTERVAL = 3000
+const TERMINAL_STATUSES = ['COMPLETED', 'FAILED', 'CANCELLED', 'ERROR']
+
 export default function App() {
   const [assetsLoaded, setAssetsLoaded] = useState(false)
   const [depth, setDepth] = useState(0)
@@ -82,6 +83,8 @@ export default function App() {
   const [patterns, setPatterns] = useState<DarkPattern[]>([])
   const [encounters, setEncounters] = useState<Encounter[]>([])
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
+  const [streamingUrl, setStreamingUrl] = useState<string | null>(null)
+  const [scanStatus, setScanStatus] = useState('')
 
   const handleLoaded = useCallback(() => setAssetsLoaded(true), [])
 
@@ -92,20 +95,48 @@ export default function App() {
     }
     setUrl(cleanUrl)
     setScanning(true)
+    setStreamingUrl(null)
+    setScanStatus('PENDING')
 
     let resultPatterns: DarkPattern[]
 
     try {
-      const rawData = await scanUrl(cleanUrl)
-      const mapped = mapTinyFishResponse(rawData)
-      if (mapped && mapped.length > 0) {
-        resultPatterns = mapped
-      } else {
-        console.warn('TinyFish returned no patterns, using fallback')
-        resultPatterns = FALLBACK_PATTERNS(cleanUrl)
-      }
+      const runId = await startScan(cleanUrl)
+
+      resultPatterns = await new Promise<DarkPattern[]>((resolve) => {
+        let currentStreamingUrl: string | null = null
+
+        const poll = async () => {
+          try {
+            const pollResult = await pollScan(runId)
+            setScanStatus(pollResult.status)
+            if (pollResult.streamingUrl && !currentStreamingUrl) {
+              currentStreamingUrl = pollResult.streamingUrl
+              setStreamingUrl(pollResult.streamingUrl)
+            }
+
+            if (TERMINAL_STATUSES.includes(pollResult.status)) {
+              if (pollResult.status === 'COMPLETED' && pollResult.result) {
+                const mapped = mapTinyFishResponse(pollResult.result)
+                if (mapped && mapped.length > 0) {
+                  resolve(mapped)
+                  return
+                }
+              }
+              console.warn('Scan ended with status:', pollResult.status, '- using fallback')
+              resolve(FALLBACK_PATTERNS(cleanUrl))
+            } else {
+              setTimeout(poll, POLL_INTERVAL)
+            }
+          } catch (err) {
+            console.warn('Poll error:', err)
+            resolve(FALLBACK_PATTERNS(cleanUrl))
+          }
+        }
+        poll()
+      })
     } catch (err) {
-      console.warn('API unavailable, using fallback data:', err)
+      console.warn('Scan start failed, using fallback:', err)
       resultPatterns = FALLBACK_PATTERNS(cleanUrl)
     }
 
@@ -125,7 +156,22 @@ export default function App() {
     setEncounters(buildEncounters(deduped))
     setScanResult(sr)
     setScanning(false)
+    setStreamingUrl(null)
+    setScanStatus('')
     setStarted(true)
+  }, [])
+
+  const handleReset = useCallback(() => {
+    setStarted(false)
+    setScanning(false)
+    setPatterns([])
+    setEncounters([])
+    setScanResult(null)
+    setUrl('')
+    setStreamingUrl(null)
+    setScanStatus('')
+    setDepth(0)
+    setActiveEncounterIndex(-1)
   }, [])
 
   return (
@@ -148,9 +194,12 @@ export default function App() {
             started={started}
             scanning={scanning}
             scanError=""
+            streamingUrl={streamingUrl}
+            scanStatus={scanStatus}
             onExplore={handleExplore}
             onDepthChange={setDepth}
             onActiveEncounterChange={setActiveEncounterIndex}
+            onReset={handleReset}
           />
         </>
       )}
