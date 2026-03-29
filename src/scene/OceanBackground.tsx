@@ -606,7 +606,10 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
 
         // ── Anglerfish GLB: tied to safety score visibility ──
         if (anglerfishModel) {
-          const showAngler = s.showAnglerfish
+          // Show when score is visible OR fallback: deep enough past last encounter
+          const encs = encountersRef.current
+          const lastEncDepth = encs.length > 0 ? encs[encs.length - 1].depth : 9999
+          const showAngler = s.showAnglerfish || (s.started && s.depth > lastEncDepth + 150)
 
           // Smooth fade-in: track time since showAngler became true
           if (showAngler && !anglerfishModel.userData.spawnTime) {
@@ -614,14 +617,15 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
           } else if (!showAngler) {
             anglerfishModel.userData.spawnTime = 0
           }
-          const timeSinceSpawn = showAngler ? elapsed - (anglerfishModel.userData.spawnTime || elapsed) : 0
-          const fadeProgress = Math.min(1, timeSinceSpawn / 3) // 3 second fade-in
-          anglerfishModel.visible = fadeProgress > 0
+          const spawnT = anglerfishModel.userData.spawnTime as number
+          const timeSinceSpawn = showAngler && spawnT > 0 ? elapsed - spawnT : 0
+          const fadeProgress = Math.min(1, timeSinceSpawn / 3)
+          anglerfishModel.visible = fadeProgress > 0.01
           anglerfishModel.scale.setScalar(fadeProgress * (anglerfishModel.userData.baseScale ?? 1))
 
-          if (fadeProgress > 0) {
-            // Position to the right of camera, offset so it's not behind the report
-            anglerfishModel.position.x = camera.position.x + 20 + Math.sin(elapsed * 0.08) * 3
+          if (fadeProgress > 0.01) {
+            // Position to the right of camera, slightly offset
+            anglerfishModel.position.x = camera.position.x + 14 + Math.sin(elapsed * 0.08) * 3
             anglerfishModel.position.z = camera.position.z - 18
             anglerfishModel.position.y = camera.position.y - 5 + Math.sin(elapsed * 0.2) * 1.5
 
