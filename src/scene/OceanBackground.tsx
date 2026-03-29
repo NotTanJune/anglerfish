@@ -389,6 +389,7 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
       box.getSize(size)
       const scaleFactor = 10 / Math.max(size.x, size.y, size.z)
       anglerfishModel.scale.setScalar(scaleFactor)
+      anglerfishModel.userData.baseScale = scaleFactor
 
       // Boost emissive for deep-sea visibility
       anglerfishModel.traverse((child) => {
@@ -601,35 +602,40 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
           c.pointLight.intensity = baseLightIntensity + Math.sin(elapsed * 1.5 + c.phase * 2) * pulseAmount
         })
 
-        // ── Anglerfish GLB: only visible when camera is near the bottom ──
+        // ── Anglerfish GLB: spawns after safety score appears ──
         if (anglerfishModel) {
-          // Show anglerfish only after user scrolls well past the last encounter card
+          // Score pops up at ~lastEncDepth + 127m. Spawn anglerfish after that.
           const encs = encountersRef.current
           const lastEncDepth = encs.length > 0 ? encs[encs.length - 1].depth : 9999
-          const showAngler = s.depth > lastEncDepth + 80
-          anglerfishModel.visible = showAngler
-          if (showAngler) {
-            // Position to the right side of camera, slightly below
-            anglerfishModel.position.x = camera.position.x + 12 + Math.sin(elapsed * 0.08) * 3
-            anglerfishModel.position.z = camera.position.z - 15
-            anglerfishModel.position.y = camera.position.y - 6 + Math.sin(elapsed * 0.2) * 1.5
+          const spawnDepth = lastEncDepth + 140
+          const showAngler = s.depth > spawnDepth
 
-            // Face toward the camera
+          // Smooth fade-in over 30m of scroll
+          const fadeProgress = showAngler ? Math.min(1, (s.depth - spawnDepth) / 30) : 0
+          anglerfishModel.visible = fadeProgress > 0
+          anglerfishModel.scale.setScalar(fadeProgress * (anglerfishModel.userData.baseScale ?? 1))
+
+          if (fadeProgress > 0) {
+            // Position to the right of camera, offset so it's not behind the report
+            anglerfishModel.position.x = camera.position.x + 20 + Math.sin(elapsed * 0.08) * 3
+            anglerfishModel.position.z = camera.position.z - 18
+            anglerfishModel.position.y = camera.position.y - 5 + Math.sin(elapsed * 0.2) * 1.5
+
             anglerfishModel.lookAt(camera.position)
-            // Add subtle sway on top of lookAt
             anglerfishModel.rotation.y += Math.sin(elapsed * 0.1) * 0.1
             anglerfishModel.rotation.z += Math.sin(elapsed * 0.12) * 0.03
-            // Lure pulsing (bright to dim like attracting prey)
+
+            // Lure pulsing
             const pulse = 0.5 + 0.5 * Math.sin(elapsed * 1.5)
             anglerfishModel.children.forEach(child => {
               if (child instanceof THREE.PointLight && child.color.getHex() === 0x44ffaa) {
-                child.intensity = 8 + pulse * 20
+                child.intensity = (8 + pulse * 20) * fadeProgress
               }
               if (child instanceof THREE.Mesh && child.name === 'lure-sphere') {
                 const mat = child.material as THREE.MeshBasicMaterial
-                mat.opacity = 0.4 + pulse * 0.6
-                const s = 0.8 + pulse * 0.5
-                child.scale.set(s, s, s)
+                mat.opacity = (0.4 + pulse * 0.6) * fadeProgress
+                const ls = 0.8 + pulse * 0.5
+                child.scale.set(ls, ls, ls)
               }
             })
           }

@@ -1,0 +1,14 @@
+node_modules
+dist
+.env
+.vercel
+*.local
+.DS_Store
+SeaCreaturesPack/
+.claude/
+pixel-prompts.md
+CLAUDE.md
+public/assets/Meshy_AI_Abyssal_Angler_0328055306_texture.glb
+linkedin-post.txt
+plan.md
+anglerfish/
