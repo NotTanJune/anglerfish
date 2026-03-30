@@ -24,26 +24,34 @@ export function AudioManager({ depth, isActive }: Props) {
   const initAudio = useCallback(async () => {
     if (loadedRef.current) return
 
-    if (!toneStartedRef.current) {
-      await Tone.start()
-      toneStartedRef.current = true
+    try {
+      if (!toneStartedRef.current) {
+        await Tone.start()
+        toneStartedRef.current = true
+      }
+
+      const players = AUDIO_TRACKS.map(({ src, volume }) => {
+        return new Tone.Player({
+          url: src,
+          loop: true,
+          volume,
+          fadeIn: 3,
+          fadeOut: 3,
+        }).toDestination()
+      })
+
+      playersRef.current = players
+
+      // Wait for all buffers to load (with timeout)
+      await Promise.race([
+        Tone.loaded(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Audio load timeout')), 10000)),
+      ])
+      loadedRef.current = true
+    } catch (err) {
+      console.warn('Audio init failed, continuing without sound:', err)
+      // Non-critical: the app works fine without audio
     }
-
-    const players = AUDIO_TRACKS.map(({ src, volume }) => {
-      return new Tone.Player({
-        url: src,
-        loop: true,
-        volume,
-        fadeIn: 3,
-        fadeOut: 3,
-      }).toDestination()
-    })
-
-    playersRef.current = players
-
-    // Wait for all buffers to load
-    await Tone.loaded()
-    loadedRef.current = true
   }, [])
 
   // Init audio on first activation (user gesture required for Tone.start)

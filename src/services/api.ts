@@ -6,11 +6,23 @@ export class RateLimitError extends Error {
 }
 
 export async function startScan(url: string): Promise<string> {
-  const res = await fetch('/api/scan', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url }),
-  })
+  let res: Response
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 15000)
+    res = await fetch('/api/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+      signal: controller.signal,
+    })
+    clearTimeout(timeout)
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('Scan request timed out. The server may be unavailable.')
+    }
+    throw new Error('Network error: could not reach scan API. Are you running vercel dev?')
+  }
   if (res.status === 429) {
     throw new RateLimitError('Daily exploration limit reached. Try again tomorrow.')
   }
@@ -31,7 +43,20 @@ export interface PollResult {
 }
 
 export async function pollScan(runId: string): Promise<PollResult> {
-  const res = await fetch(`/api/poll?run_id=${encodeURIComponent(runId)}`)
+  let res: Response
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 15000)
+    res = await fetch(`/api/poll?run_id=${encodeURIComponent(runId)}`, {
+      signal: controller.signal,
+    })
+    clearTimeout(timeout)
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('Poll request timed out')
+    }
+    throw new Error('Network error while polling scan status')
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     throw new Error((err as { error?: string }).error || `Poll failed: ${res.status}`)

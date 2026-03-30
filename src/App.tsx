@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { LoadingScreen } from './components/LoadingScreen'
 import { OceanBackground } from './scene/OceanBackground'
 import { DescentPage } from './components/DescentPage'
@@ -97,6 +97,7 @@ export default function App() {
   const [sceneReady, setSceneReady] = useState(false)
   const [rateLimited, setRateLimited] = useState(false)
   const [showAnglerfish, setShowAnglerfish] = useState(false)
+  const [scanError, setScanError] = useState('')
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const handleLoaded = useCallback(() => setAssetsLoaded(true), [])
@@ -124,7 +125,20 @@ export default function App() {
     setStarted(true)
   }, [])
 
+  // Clean up poll timer on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) {
+        clearTimeout(pollRef.current)
+        pollRef.current = null
+      }
+    }
+  }, [])
+
   const handleExplore = useCallback(async (inputUrl: string) => {
+    // Prevent double-submit while scanning
+    if (scanning) return
+
     let cleanUrl = inputUrl.trim() || 'amazon.com'
     if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
       cleanUrl = 'https://' + cleanUrl
@@ -133,17 +147,26 @@ export default function App() {
     setScanning(true)
     setScanStatus('PENDING')
     setStreamingUrl(null)
+    setScanError('')
 
     try {
       const runId = await startScan(cleanUrl)
-      console.log('[scan] run started:', runId)
+
+      let pollAttempts = 0
+      const MAX_POLL_ATTEMPTS = 40 // ~2 minutes at 3s intervals
 
       // Poll loop
       const poll = async () => {
+        pollAttempts++
+        if (pollAttempts > MAX_POLL_ATTEMPTS) {
+          console.warn('Poll timeout after', MAX_POLL_ATTEMPTS, 'attempts, using fallback')
+          setScanError('Scan took too long. Showing demo results.')
+          finalizeScan(FALLBACK_PATTERNS(cleanUrl), cleanUrl)
+          return
+        }
+
         try {
           const pollResult: PollResult = await pollScan(runId)
-          console.log('[poll]', pollResult.status, pollResult.streamingUrl ? '(has stream)' : '')
-
           setScanStatus(pollResult.status)
           if (pollResult.streamingUrl) {
             setStreamingUrl(pollResult.streamingUrl)
@@ -159,6 +182,7 @@ export default function App() {
             }
           } else if (pollResult.status === 'FAILED' || pollResult.status === 'CANCELLED') {
             console.warn('Scan failed/cancelled, using fallback')
+            setScanError('Scan could not complete. Showing demo results.')
             finalizeScan(FALLBACK_PATTERNS(cleanUrl), cleanUrl)
           } else {
             // Still running, poll again in 3s
@@ -180,9 +204,10 @@ export default function App() {
         return
       }
       console.warn('API unavailable, using fallback data:', err)
+      setScanError('API unavailable. Showing demo results for ' + cleanUrl)
       finalizeScan(FALLBACK_PATTERNS(cleanUrl), cleanUrl)
     }
-  }, [finalizeScan])
+  }, [scanning, finalizeScan])
 
   const handleReset = useCallback(() => {
     // Clear any ongoing poll
@@ -201,6 +226,7 @@ export default function App() {
     setShowAnglerfish(false)
     setStreamingUrl(null)
     setScanStatus('PENDING')
+    setScanError('')
   }, [])
 
   // Debug: jump straight to deep depth with fake data
@@ -244,7 +270,7 @@ export default function App() {
             started={started}
             sceneReady={sceneReady}
             scanning={scanning}
-            scanError=""
+            scanError={scanError}
             streamingUrl={streamingUrl}
             scanStatus={scanStatus}
             rateLimited={rateLimited}

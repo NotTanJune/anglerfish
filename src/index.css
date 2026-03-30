@@ -14,6 +14,8 @@ html, body, #root {
   background: #0a0a2e;
   color: #e0e0e0;
   font-family: 'Press Start 2P', monospace;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
 }
 
 *::-webkit-scrollbar { display: none; }
@@ -29,4 +31,13 @@ html, body, #root {
   --color-warning: #ffaa00;
   --color-safe: #44ff88;
   --color-lure: #E8913A;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -91,7 +91,7 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
 
     // ── Renderer ──
     const renderer = new THREE.WebGLRenderer({ antialias: true })
-    renderer.setPixelRatio(window.devicePixelRatio)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(window.innerWidth, window.innerHeight)
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = 0.5
@@ -317,7 +317,12 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
       { file: 'Jellyfish.fbx', y: -550, x: 0, z: -12, scale: 0.02, speed: 0.02, light: 0x44ffff, orbit: 18 },
     ]
 
-    creatureConfig.forEach((cfg, i) => {
+    // Track which creatures have been loaded to enable lazy loading by depth
+    const creatureLoaded = new Set<number>()
+
+    function loadCreature(cfg: typeof creatureConfig[number], i: number) {
+      if (creatureLoaded.has(i)) return
+      creatureLoaded.add(i)
       fbxLoader.load(`/assets/creatures/${cfg.file}`, (fbx) => {
         fbx.scale.setScalar(cfg.scale)
         fbx.position.set(cfg.x, cfg.y, cfg.z)
@@ -376,6 +381,11 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
       }, undefined, (err) => {
         console.warn(`Failed to load creature ${cfg.file}:`, err)
       })
+    }
+
+    // Eagerly load shallow creatures (within first 150 units); deeper ones load on demand
+    creatureConfig.forEach((cfg, i) => {
+      if (Math.abs(cfg.y) < 150) loadCreature(cfg, i)
     })
 
     // ── Anglerfish model (by Petr Janečka, CC BY 4.0) ──
@@ -445,6 +455,12 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
     // ── Fog ──
     scene.fog = new THREE.FogExp2(0x0a2030, 0)
 
+    // Pre-allocated colors to avoid per-frame GC pressure
+    const _colorShallow = new THREE.Color(0x0a3050)
+    const _colorDeep = new THREE.Color(0x030812)
+    const _ambientShallow = new THREE.Color(0x4488aa)
+    const _ambientDeep = new THREE.Color(0x112233)
+
     // ── Resize ──
     const onResize = () => {
       camera.aspect = window.innerWidth / window.innerHeight
@@ -480,8 +496,19 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
         }
       }
 
-      // Tick all creature animation mixers
-      seaCreatures.forEach(c => { if (c.mixer) c.mixer.update(delta) })
+      // Lazy-load creatures as camera approaches; cull distant ones
+      const camY = camera.position.y
+      creatureConfig.forEach((cfg, i) => {
+        if (!creatureLoaded.has(i) && Math.abs(cfg.y - camY) < 200) {
+          loadCreature(cfg, i)
+        }
+      })
+      seaCreatures.forEach(c => {
+        const dist = Math.abs(c.baseY - camY)
+        const visible = dist < 120
+        c.mesh.visible = visible
+        if (visible && c.mixer) c.mixer.update(delta)
+      })
 
       water.material.uniforms['time'].value += 1.0 / 60.0
 
@@ -506,11 +533,7 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
         tintPlane.lookAt(camera.position)
         if (isUnderwater) {
           tintMat.opacity = Math.min(0.55, t * 0.6)
-          tintMat.color.lerpColors(
-            new THREE.Color(0x0a3050),
-            new THREE.Color(0x030812),
-            t
-          )
+          tintMat.color.lerpColors(_colorShallow, _colorDeep, t)
         } else {
           tintMat.opacity = 0
         }
@@ -518,11 +541,7 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
         // Fog: gradual, light enough for creature/anglerfish lights to show
         const fogDensity = isUnderwater ? 0.001 + t * 0.004 : 0
         ;(scene.fog as THREE.FogExp2).density = fogDensity
-        ;(scene.fog as THREE.FogExp2).color.lerpColors(
-          new THREE.Color(0x0a3050),
-          new THREE.Color(0x030812),
-          t
-        )
+        ;(scene.fog as THREE.FogExp2).color.lerpColors(_colorShallow, _colorDeep, t)
 
         // Exposure: darkens gradually but stays high enough to see lit objects
         renderer.toneMappingExposure = isUnderwater
@@ -531,7 +550,7 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
 
         // Ambient: dims but never fully dark
         ambientLight.intensity = Math.max(0.05, 0.5 - t * 0.45)
-        ambientLight.color.lerpColors(new THREE.Color(0x4488aa), new THREE.Color(0x112233), t)
+        ambientLight.color.lerpColors(_ambientShallow, _ambientDeep, t)
 
         // God rays: linger longer near surface
         godRayLight.intensity = isUnderwater ? Math.max(0, 2.5 - t * 3.0) : 0
@@ -580,8 +599,9 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
           m.light.position.y = m.baseY + Math.sin(elapsed * 0.6 + i * 1.7) * 0.8
         })
 
-        // ── Sea creature swimming animations ──
+        // ── Sea creature swimming animations (only visible) ──
         seaCreatures.forEach((c) => {
+          if (!c.mesh.visible) return
           const t = elapsed * c.speed + c.phase
 
           // Circular orbit: creatures swim in wide circles through the scene
@@ -678,6 +698,22 @@ export function OceanBackground({ depth, encounters, started, activeEncounterInd
     return () => {
       cancelAnimationFrame(frameIdRef.current)
       window.removeEventListener('resize', onResize)
+
+      // Dispose all creature meshes, geometries, materials, textures
+      seaCreatures.forEach(c => {
+        c.mesh.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.geometry?.dispose()
+            const mat = child.material
+            if (Array.isArray(mat)) mat.forEach(m => { m.map?.dispose(); m.dispose() })
+            else { mat.map?.dispose(); mat.dispose() }
+          }
+        })
+        c.mixer?.stopAllAction()
+        scene.remove(c.mesh)
+      })
+      if (anglerfishModel) scene.remove(anglerfishModel)
+
       renderer.dispose()
       pmremGenerator.dispose()
       if (renderTarget) renderTarget.dispose()

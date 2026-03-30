@@ -64,8 +64,6 @@ export function DescentPage({
   const cardsEnd = cardsStart + sorted.length * SECTION_HEIGHT
   const reportHeight = 1600
   const totalHeight = cardsEnd + reportHeight
-  const maxDepth = Math.round(totalHeight * METERS_PER_PIXEL)
-
   const handleScroll = useCallback(() => {
     if (!containerRef.current) return
     const sy = containerRef.current.scrollTop
@@ -244,11 +242,13 @@ export function DescentPage({
                 padding: '2px',
               }}>
                 <input
-                  type="text"
+                  type="url"
                   className="descent-url-input"
                   value={inputUrl}
                   onChange={(e) => setInputUrl(e.target.value)}
-                  placeholder="Enter any website url..."
+                  placeholder="Enter any website URL..."
+                  aria-label="Website URL to scan for dark patterns"
+                  autoComplete="url"
                   autoFocus
                   style={{
                     width: '100%',
@@ -262,18 +262,20 @@ export function DescentPage({
                   }}
                 />
               </div>
-              <button type="submit" style={{
+              <button type="submit" disabled={scanning} style={{
                 fontFamily: 'var(--pixel-font)',
-                fontSize: '0.8rem',
-                padding: '14px 40px',
-                background: '#E8913A',
-                border: '2px solid #E8913A',
-                color: '#000',
-                cursor: 'pointer',
+                fontSize: 'clamp(0.65rem, 1.5vw, 0.8rem)',
+                padding: '16px 40px',
+                minHeight: 48,
+                background: scanning ? '#665533' : '#E8913A',
+                border: `2px solid ${scanning ? '#665533' : '#E8913A'}`,
+                color: scanning ? '#999' : '#000',
+                cursor: scanning ? 'not-allowed' : 'pointer',
                 letterSpacing: '0.2em',
                 transition: 'all 0.2s',
+                opacity: scanning ? 0.6 : 1,
               }}>
-                DIVE IN
+                {scanning ? 'SCANNING...' : 'DIVE IN'}
               </button>
               {scanError && (
                 <p style={{
@@ -304,7 +306,7 @@ export function DescentPage({
                 <div style={{
                   width: '100%',
                   aspectRatio: '4 / 3',
-                  maxHeight: 280,
+                  maxHeight: 'min(280px, 40vh)',
                   border: '2px solid rgba(232, 145, 58, 0.3)',
                   borderRadius: 8,
                   overflow: 'hidden',
@@ -457,7 +459,7 @@ export function DescentPage({
               gap: '0.8rem',
               zIndex: 20,
               pointerEvents: 'none',
-              width: 'clamp(350px, 55vw, 650px)',
+              width: 'clamp(280px, 85vw, 650px)',
               maxHeight: '85vh',
               overflow: 'hidden',
             }}
@@ -539,8 +541,8 @@ export function DescentPage({
 
               <p style={{
                 fontFamily: 'var(--pixel-font)',
-                fontSize: 'clamp(0.3rem, 0.7vw, 0.4rem)',
-                color: '#556',
+                fontSize: 'clamp(0.4rem, 1vw, 0.55rem)',
+                color: '#667',
               }}>
                 {activePattern.page_section} | {activeDepth}m
               </p>
@@ -551,19 +553,25 @@ export function DescentPage({
 
       {/* === Sticky Depth Meter (bigger, fills top-to-bottom) === */}
       {started && (
-        <div style={{
-          position: 'fixed',
-          left: 28,
-          top: '10%',
-          bottom: '10%',
-          zIndex: 10,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 12,
-          pointerEvents: 'none',
-        }}>
-          <div style={{
+        <div
+          role="meter"
+          aria-label={`Depth: ${scrollDepth} meters`}
+          aria-valuenow={scrollDepth}
+          aria-valuemin={0}
+          style={{
+            position: 'fixed',
+            left: 'clamp(10px, 3vw, 28px)',
+            top: '10%',
+            bottom: '10%',
+            zIndex: 10,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 12,
+            pointerEvents: 'none',
+          }}
+        >
+          <div className="depth-bar" style={{
             width: 6,
             flex: 1,
             background: 'rgba(255,255,255,0.06)',
@@ -584,7 +592,7 @@ export function DescentPage({
           </div>
           <p style={{
             fontFamily: 'var(--pixel-font)',
-            fontSize: 'clamp(0.8rem, 1.8vw, 1.2rem)',
+            fontSize: 'clamp(0.6rem, 1.8vw, 1.2rem)',
             color: '#E8913A',
             textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
           }}>
@@ -609,6 +617,20 @@ export function DescentPage({
           0% { width: 0%; }
           50% { width: 100%; }
           100% { width: 0%; }
+        }
+        button:focus-visible {
+          outline: 2px solid #E8913A;
+          outline-offset: 2px;
+        }
+        .descent-url-input:focus-visible {
+          outline: none;
+        }
+        .reset-btn:hover {
+          border-color: rgba(136, 170, 187, 0.8) !important;
+          color: #bbddee !important;
+        }
+        @media (max-width: 480px) {
+          .depth-bar { display: none; }
         }
       `}</style>
     </div>
@@ -670,14 +692,16 @@ function BossReportSection({ top, height, scanResult, gradeColor, scrollY, rateL
             padding: '2rem',
             maxWidth: 500,
             width: '90%',
+            background: 'radial-gradient(ellipse at center, rgba(5, 10, 25, 0.92) 0%, rgba(3, 8, 18, 0.85) 60%, transparent 100%)',
+            borderRadius: 16,
           }}
         >
           <p style={{
             fontFamily: 'var(--pixel-font)',
-            fontSize: 'clamp(0.6rem, 1.2vw, 0.85rem)',
+            fontSize: 'clamp(0.55rem, 1.5vw, 0.85rem)',
             color: '#88aabb',
             marginBottom: '0.8rem',
-            letterSpacing: '0.3em',
+            letterSpacing: '0.2em',
             textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
           }}>
             SAFETY REPORT
@@ -689,7 +713,7 @@ function BossReportSection({ top, height, scanResult, gradeColor, scrollY, rateL
             transition={{ type: 'spring' as const, stiffness: 120, damping: 12, delay: 0.2 }}
             style={{
               fontFamily: 'var(--pixel-font)',
-              fontSize: 'clamp(5rem, 14vw, 10rem)',
+              fontSize: 'clamp(4rem, 14vw, 10rem)',
               color: gradeColor,
               textShadow: `0 0 60px ${gradeColor}88, 0 0 120px ${gradeColor}44`,
               lineHeight: 1,
@@ -701,7 +725,7 @@ function BossReportSection({ top, height, scanResult, gradeColor, scrollY, rateL
 
           <p style={{
             fontFamily: 'var(--pixel-font)',
-            fontSize: 'clamp(0.7rem, 1.5vw, 1rem)',
+            fontSize: 'clamp(0.55rem, 1.5vw, 1rem)',
             color: gradeColor,
             textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
             marginBottom: '0.3rem',
@@ -711,10 +735,12 @@ function BossReportSection({ top, height, scanResult, gradeColor, scrollY, rateL
 
           <p style={{
             fontFamily: 'var(--pixel-font)',
-            fontSize: 'clamp(0.4rem, 0.9vw, 0.55rem)',
+            fontSize: 'clamp(0.4rem, 1.1vw, 0.55rem)',
             color: '#aaa',
             marginBottom: '1.5rem',
             textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
+            textAlign: 'center',
+            wordBreak: 'break-word',
           }}>
             {scanResult.url} | {scanResult.patterns.length} dark patterns found
           </p>
@@ -735,15 +761,15 @@ function BossReportSection({ top, height, scanResult, gradeColor, scrollY, rateL
                     gap: '0.6rem',
                     marginBottom: '0.6rem',
                     fontFamily: 'var(--pixel-font)',
-                    fontSize: 'clamp(0.4rem, 0.9vw, 0.55rem)',
-                    padding: '5px 10px',
+                    fontSize: 'clamp(0.4rem, 1.2vw, 0.55rem)',
+                    padding: '6px 12px',
                     background: 'rgba(0,0,0,0.4)',
                     borderRadius: 4,
                     borderLeft: `3px solid ${m.color}`,
                   }}
                 >
-                  <span style={{ fontSize: '1rem' }}>{tx.emoji}</span>
-                  <span style={{ flex: 1, color: '#ccc' }}>{tx.name}</span>
+                  <span style={{ fontSize: '1rem', flexShrink: 0 }}>{tx.emoji}</span>
+                  <span style={{ flex: 1, color: '#ccc', minWidth: 0 }}>{tx.name}</span>
                   <span style={{ color: m.color }}>x{count}</span>
                 </motion.div>
               )
@@ -795,6 +821,7 @@ function BossReportSection({ top, height, scanResult, gradeColor, scrollY, rateL
               ) : (
                 <button
                   onClick={onReset}
+                  className="reset-btn"
                   style={{
                     fontFamily: 'var(--pixel-font)',
                     fontSize: 'clamp(0.45rem, 0.9vw, 0.6rem)',

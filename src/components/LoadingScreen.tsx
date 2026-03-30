@@ -37,12 +37,17 @@ export function LoadingScreen({ onLoaded }: Props) {
         })
     )
 
-    // Also preload the Google Font
-    document.fonts.ready.then(() => {
-      Promise.all(promises).then(() => {
-        setLoaded(true)
-        setTimeout(onLoaded, 600) // Brief pause for fade out
-      })
+    // Wait for fonts + assets, with a hard timeout so users are never stuck
+    const fontReady = document.fonts.ready.catch(() => {})
+    const assetsReady = Promise.all(promises)
+    const timeout = new Promise<void>(resolve => setTimeout(resolve, 8000))
+
+    Promise.race([
+      Promise.all([fontReady, assetsReady]),
+      timeout,
+    ]).then(() => {
+      setLoaded(true)
+      setTimeout(onLoaded, 600) // Brief pause for fade out
     })
   }, [onLoaded])
 
